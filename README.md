@@ -45,7 +45,7 @@ Open *(Data/SKSE/Plugins/SpeedController.json)*
 - kReduceSneak: Reduction while sneaking.
 - kIncreaseSprinting: Extra increase applied while sprinting.
 - kNoReductionInCombat: If true, disables reductions during combat (useful for responsiveness).
-- kToggleSpeedKey: Keyboard scancode for toggling jogging mode (e.g., 269 = NumPad 3 / depends on layout). Set 0 to disable.
+- kToggleSpeedKey: Keyboard scancode for toggling jogging mode (e.g., 269 = dpadright (https://www.nexusmods.com/skyrimspecialedition/articles/7704%5D) / depends on layout). Set 0 to disable (Or better, don't use it :D).
 - kToggleSpeedEvent: Game user event name that also toggles jogging mode (default "Shout"). Set "" to disable.
 - kSprintEventName: Input event used to latch sprint (default "Sprint"). If you use custom control maps, set the matching event name here.
 
