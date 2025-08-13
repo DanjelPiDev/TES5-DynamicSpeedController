@@ -36,13 +36,11 @@ void SpeedController::Install() {
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESLoadGameEvent*, RE::BSTEventSource<RE::TESLoadGameEvent>*) {
     Settings::LoadFromJson(Settings::DefaultPath());
-    LoadToggleBindingFromJson();
 
-    if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
-        pc->AddAnimationGraphEventSink(this);
-    }
-    TryInitDrawnFromGraph();
-    Apply();
+    Settings::LoadFromJson(Settings::DefaultPath());
+    LoadToggleBindingFromJson();
+    lastSprintMs_.store(0, std::memory_order_relaxed);
+
     return RE::BSEventNotifyControl::kContinue;
 }
 
@@ -93,6 +91,8 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
             }
         }
 
+        if (loading_.load(std::memory_order_relaxed)) return RE::BSEventNotifyControl::kContinue;
+
         bool matched = false;
 
         if (!toggleUserEvent_.empty() && evName == RE::BSFixedString(toggleUserEvent_.c_str())) {
@@ -106,20 +106,19 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
         if (matched) {
             const auto now = std::chrono::steady_clock::now();
             if (now - lastToggle_ >= toggleCooldown_) {
-                joggingMode_ = !joggingMode_;
-                lastToggle_ = now;
-
-                if (std::fabs(currentDelta) > 0.01f) {
-                    if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
-                        ModSpeedMult(pc, -currentDelta);
-                        currentDelta = 0.0f;
-                    }
-                }
-                Apply();
-
                 if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+                    const float before = CaseToDelta(ComputeCase(pc), pc);
+                    joggingMode_ = !joggingMode_;
+                    const float after = CaseToDelta(ComputeCase(pc), pc);
+                    const float diff = after - before;
+
+                    if (std::fabs(diff) > 0.01f) {
+                        ModSpeedMult(pc, diff);
+                    }
+                    currentDelta = after;
                     ForceSpeedRefresh(pc);
                 }
+                lastToggle_ = now;
             }
             break;
         }
@@ -153,7 +152,9 @@ void SpeedController::LoadToggleBindingFromJson() {
 }
 
 void SpeedController::StartHeartbeat() {
+    if (loading_.load(std::memory_order_relaxed)) return;
     if (run_) return;
+
     run_ = true;
     th_ = std::thread([this]() {
         using namespace std::chrono_literals;
@@ -195,6 +196,19 @@ SpeedController::MoveCase SpeedController::ComputeCase(const RE::PlayerCharacter
     return MoveCase::Default;
 }
 
+void SpeedController::OnPreLoadGame() { loading_.store(true, std::memory_order_relaxed); }
+
+void SpeedController::OnPostLoadGame() {
+    SKSE::GetTaskInterface()->AddTask([this]() {
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            currentDelta = CaseToDelta(ComputeCase(pc), pc);
+            ForceSpeedRefresh(pc);
+        }
+        loading_.store(false, std::memory_order_relaxed);
+    });
+}
+
+
 float SpeedController::CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) const {
     float base = 0.0f;
     switch (c) {
@@ -224,24 +238,19 @@ float SpeedController::CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) co
 }
 
 void SpeedController::Apply() {
+    if (loading_.load(std::memory_order_relaxed)) return;
+
     auto* pc = RE::PlayerCharacter::GetSingleton();
     if (!pc) return;
-
-    if (!initTried_) {
-        initTried_ = true;
-    }
 
     const MoveCase mc = ComputeCase(pc);
     const float want = CaseToDelta(mc, pc);
 
-    if (std::fabs(want - currentDelta) > 0.01f) {
-        if (std::fabs(currentDelta) > 0.01f) {
-            ModSpeedMult(pc, -currentDelta);
-        }
+    const float diff = want - currentDelta;
+
+    if (std::fabs(diff) > 0.01f) {
+        ModSpeedMult(pc, diff);
         currentDelta = want;
-        if (std::fabs(currentDelta) > 0.01f) {
-            ModSpeedMult(pc, currentDelta);
-        }
         ForceSpeedRefresh(pc);
     }
 }
@@ -295,3 +304,9 @@ bool SpeedController::IsSprintingByGraph(const RE::Actor* a) {
     if (a->GetGraphVariableBool("bSprint", b) && b) return true;
     return false;
 }
+
+bool SpeedController::GetJoggingMode() const { return joggingMode_; }
+void SpeedController::SetJoggingMode(bool b) { joggingMode_ = b; }
+
+float SpeedController::GetCurrentDelta() const { return currentDelta; }
+void SpeedController::SetCurrentDelta(float d) { currentDelta = d; }

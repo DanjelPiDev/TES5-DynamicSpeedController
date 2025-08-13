@@ -21,12 +21,22 @@ public:
     virtual RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent*, RE::BSTEventSource<RE::BSAnimationGraphEvent>*) override;
     virtual RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* evns, RE::BSTEventSource<RE::InputEvent*>*) override;
 
+    void OnPostLoadGame();
+    void OnPreLoadGame();
+
+    bool GetJoggingMode() const;
+    void SetJoggingMode(bool b);
+
+    float GetCurrentDelta() const;
+    void SetCurrentDelta(float d);
+
 private:
     enum class MoveCase : std::uint8_t { Combat, Drawn, Sneak, Default };
 
     float currentDelta = 0.0f;
     bool initTried_ = false;
     std::atomic<bool> run_ = false;
+    std::atomic<bool> loading_{false};
     std::thread th_;
 
     bool joggingMode_ = false;    // false=OutOfCombat normal, true=Jogging
