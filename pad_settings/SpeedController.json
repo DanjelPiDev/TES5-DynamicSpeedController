@@ -1,0 +1,11 @@
+{
+  "kReduceOutOfCombat": 45.0,
+  "kReduceJoggingOutOfCombat": 25.0,
+  "kReduceDrawn": 15.0,
+  "kReduceSneak": 20.0,
+  "kIncreaseSprinting": 25.0,
+  "kNoReductionInCombat": true,
+  "kToggleSpeedKey": 269,
+  "kToggleSpeedEvent": "Shout",
+  "kSprintEventName": "Sprint"
+}
