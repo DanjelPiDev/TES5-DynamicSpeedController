@@ -77,6 +77,16 @@ static std::optional<float> ComputeLocationValue(const RE::PlayerCharacter* pc) 
     return std::nullopt;
 }
 
+static bool RaceIs(const RE::Actor* a, std::string_view edid) {
+    if (!a) return false;
+    auto* r = a->GetRace();
+    if (!r) return false;
+    if (const char* id = r->GetFormEditorID()) {
+        return _stricmp(id, edid.data()) == 0;
+    }
+    return false;
+}
+
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESEquipEvent* evn,
                                                        RE::BSTEventSource<RE::TESEquipEvent>*) {
@@ -275,6 +285,7 @@ void SpeedController::UpdateAttackSpeed(RE::Actor* actor) {
         myDelta = 0.0f;
     }
 
+    if (Settings::ignoreBeastForms.load() && IsInBeastForm(actor)) return;
     if (!Settings::attackSpeedEnabled) return;
     if (Settings::attackOnlyWhenDrawn && !IsWeaponDrawnByState(actor)) return;
 
@@ -587,6 +598,11 @@ void SpeedController::Apply() {
 void SpeedController::ApplyFor(RE::Actor* a) {
     if (!a) return;
 
+    if (Settings::ignoreBeastForms.load() && IsInBeastForm(a)) {
+        RevertDeltasFor(a);
+        return;
+    }
+
     const float want = CaseToDelta(a);
     float& cur = CurrentDeltaSlot(a);
     const float diff = want - cur;
@@ -660,6 +676,40 @@ bool SpeedController::IsSprintingByGraph(const RE::Actor* a) {
     if (a->GetGraphVariableBool("bSprint", b) && b) return true;
     return false;
 }
+
+bool SpeedController::IsInBeastForm(const RE::Actor* a) {
+    if (!a) return false;
+
+    if (RaceIs(a, "WerewolfBeastRace")) return true;
+    if (RaceIs(a, "DLC1VampireBeastRace")) return true;
+
+    bool b = false;
+    if ((a->GetGraphVariableBool("IsWerewolf", b) && b) || (a->GetGraphVariableBool("bIsWerewolf", b) && b) ||
+        (a->GetGraphVariableBool("IsVampireLord", b) && b) || (a->GetGraphVariableBool("bIsVampireLord", b) && b)) {
+        return true;
+    }
+    return false;
+}
+
+void SpeedController::RevertDeltasFor(RE::Actor* a) {
+    if (!a) return;
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return;
+
+    float& moveDelta = CurrentDeltaSlot(a);
+    if (std::fabs(moveDelta) > 0.001f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -moveDelta);
+        moveDelta = 0.0f;
+    }
+
+    float& atkDelta = AttackDeltaSlot(a);
+    if (std::fabs(atkDelta) > 1e-6f) {
+        avo->ModActorValue(RE::ActorValue::kWeaponSpeedMult, -atkDelta);
+        atkDelta = 0.0f;
+    }
+    ForceSpeedRefresh(a);
+}
+
 
 bool SpeedController::GetJoggingMode() const { return joggingMode_; }
 void SpeedController::SetJoggingMode(bool b) { joggingMode_ = b; }

@@ -19,5 +19,6 @@
   "kScaleSlope": 0.25,
   "kMinAttackMult": 0.60,
   "kMaxAttackMult": 1.80,
-  "kEnableSpeedScalingForNPCs": false
+  "kEnableSpeedScalingForNPCs": false,
+  "kIgnoreBeastForms": true
 }

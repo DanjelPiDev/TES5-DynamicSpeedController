@@ -58,6 +58,16 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
     }
 
+    bool ignoreBeast = Settings::ignoreBeastForms.load();
+    if (ImGui::Checkbox("Ignore in Werewolf/Vampire form?", &ignoreBeast)) {
+        Settings::ignoreBeastForms.store(ignoreBeast);
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            SpeedController::GetSingleton()->RefreshNow();
+        }
+    }
+
+    ImGui::Separator();
+
     if (ImGui::Button("Save Settings")) {
         Settings::SaveToJson(Settings::DefaultPath());
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {

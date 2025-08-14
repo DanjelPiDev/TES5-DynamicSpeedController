@@ -34,13 +34,22 @@ Open *(Data/SKSE/Plugins/SpeedController.json)*
   "kReduceSneak": 20.0,
   "kIncreaseSprinting": 25.0,
   "kNoReductionInCombat": true,
-
   "kToggleSpeedKey": 269,
   "kToggleSpeedEvent": "Shout",
   "kSprintEventName": "Sprint",
-
   "kReduceInLocationSpecific": [],
-  "kReduceInLocationType": []
+  "kReduceInLocationType": [],
+  "kAttackSpeedEnabled": true,
+  "kAttackOnlyWhenDrawn": true,
+  "kAttackBase": 1.00,
+  "kWeightPivot": 10.0,
+  "kWeightSlope": -0.03,
+  "kUsePlayerScale": false,
+  "kScaleSlope": 0.25,
+  "kMinAttackMult": 0.60,
+  "kMaxAttackMult": 1.80,
+  "kEnableSpeedScalingForNPCs": false,
+  "kIgnoreBeastForms": true
 }
 ```
 
@@ -64,8 +73,19 @@ Example for an added location:
 	"kReduceSneak": 61.0,
 	"kSprintEventName": "Sprint",
 	"kToggleSpeedEvent": "Shout",
-	"kToggleSpeedKey": 269
-	}
+	"kToggleSpeedKey": 269,
+	"kAttackSpeedEnabled": true,
+	"kAttackOnlyWhenDrawn": true,
+	"kAttackBase": 1.00,
+	"kWeightPivot": 10.0,
+	"kWeightSlope": -0.03,
+	"kUsePlayerScale": false,
+	"kScaleSlope": 0.25,
+	"kMinAttackMult": 0.60,
+	"kMaxAttackMult": 1.80,
+	"kEnableSpeedScalingForNPCs": false,
+	"kIgnoreBeastForms": true
+}
 ```
 
 

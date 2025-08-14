@@ -84,8 +84,10 @@ private:
     float& CurrentDeltaSlot(RE::Actor* a);
 
     void ForEachTargetActor(const std::function<void(RE::Actor*)>& fn);
+    void RevertDeltasFor(RE::Actor* a);
     void RevertAllNPCDeltas(); 
 
+    static bool IsInBeastForm(const RE::Actor* a);
     static void ModSpeedMult(RE::Actor* actor, float delta);
     static void ForceSpeedRefresh(RE::Actor* actor);
     static bool IsWeaponDrawnByState(const RE::Actor* a);

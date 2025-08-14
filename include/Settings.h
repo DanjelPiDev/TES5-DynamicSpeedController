@@ -8,6 +8,7 @@
 
 struct Settings {
     static inline std::atomic<bool> enableSpeedScalingForNPCs{false};
+    inline static std::atomic<bool> ignoreBeastForms{true};
 
     static inline std::atomic<float> reduceOutOfCombat{45.0f};
     static inline std::atomic<float> reduceJoggingOutOfCombat{15.0f};
@@ -19,11 +20,11 @@ struct Settings {
     static inline std::string toggleSpeedEvent{"Shout"};
     static inline std::string sprintEventName{"Sprint"};
 
-    // --- Attack speed scaling ---
+    // Attack speed scaling
     static inline std::atomic<bool> attackSpeedEnabled{true};
     static inline std::atomic<bool> attackOnlyWhenDrawn{true};
 
-    static inline std::atomic<float> attackBase{1.0f};     // baseline multiplier
+    static inline std::atomic<float> attackBase{1.0f};
     static inline std::atomic<float> weightPivot{10.0f};   // reference weight in Skyrim units
     static inline std::atomic<float> weightSlope{-0.03f};  // per weight unit (negative slows heavy)
     static inline std::atomic<bool> usePlayerScale{false};

@@ -41,6 +41,7 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kAttackSpeedEnabled"] = attackSpeedEnabled.load();
     j["kAttackOnlyWhenDrawn"] = attackOnlyWhenDrawn.load();
     j["kEnableSpeedScalingForNPCs"] = enableSpeedScalingForNPCs.load();
+    j["kIgnoreBeastForms"] = ignoreBeastForms.load();
     j["kAttackBase"] = attackBase.load();
     j["kWeightPivot"] = weightPivot.load();
     j["kWeightSlope"] = weightSlope.load();
@@ -131,6 +132,9 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     }
     if (j.contains("kEnableSpeedScalingForNPCs")) {
         enableSpeedScalingForNPCs = j["kEnableSpeedScalingForNPCs"].get<bool>();
+    }
+    if (j.contains("kIgnoreBeastForms")) {
+        ignoreBeastForms = j["kIgnoreBeastForms"].get<bool>();
     }
     if (j.contains("kAttackBase")) {
         attackBase = j["kAttackBase"].get<float>();
