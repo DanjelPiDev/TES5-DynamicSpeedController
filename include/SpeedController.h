@@ -33,6 +33,11 @@ public:
 private:
     enum class MoveCase : std::uint8_t { Combat, Drawn, Sneak, Default };
 
+    // Movement speed (To fix the diagonal speed issue of skyrim)
+    float moveX_ = 0.0f;  // -1 ... +1  (left/right)
+    float moveY_ = 0.0f;  // -1 ... +1  (forward/backward)
+    float diagDelta_ = 0.0f;
+
     float currentDelta = 0.0f;
     bool initTried_ = false;
     std::atomic<bool> run_ = false;
@@ -57,6 +62,7 @@ private:
     MoveCase ComputeCase(const RE::PlayerCharacter* pc) const;
     float CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) const;
     void Apply();
+    bool UpdateDiagonalPenalty(RE::Actor* a);
 
     static void ModSpeedMult(RE::Actor* actor, float delta);
     static void ForceSpeedRefresh(RE::Actor* actor);

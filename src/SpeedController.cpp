@@ -111,62 +111,108 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::BSAnimationGrap
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* evns,
                                                        RE::BSTEventSource<RE::InputEvent*>*) {
-
     if (!evns) {
         return RE::BSEventNotifyControl::kContinue;
     }
 
+    bool axisChanged = false;
+
+    auto setAxis = [&](float& axis, float newVal) {
+        if (std::fabs(axis - newVal) > 1e-3f) {
+            axis = newVal;
+            axisChanged = true;
+        }
+    };
+
     for (auto e = *evns; e; e = e->next) {
-        if (e->eventType != RE::INPUT_EVENT_TYPE::kButton) continue;
-        auto* be = static_cast<RE::ButtonEvent*>(e);
+        // --- Button-Events (Keyboard/Buttons) ---
+        if (e->eventType == RE::INPUT_EVENT_TYPE::kButton) {
+            auto* be = static_cast<RE::ButtonEvent*>(e);
+            const bool isDown = (be->value > 0.0f);
+            const bool isPress = isDown && (be->heldDownSecs == 0.0f);
+            const RE::BSFixedString evName = be->userEvent;
 
-        const bool isDown = (be->value > 0.0f);
-        const bool isPress = isDown && (be->heldDownSecs == 0.0f);  // erste Down-Frame
-
-        const RE::BSFixedString evName = be->userEvent;
-        if (!sprintUserEvent_.empty() && evName == RE::BSFixedString(sprintUserEvent_.c_str())) {
-            if (be->value > 0.0f) {
-                lastSprintMs_.store(NowMs(), std::memory_order_relaxed);
-            } else {
-                lastSprintMs_.store(0, std::memory_order_relaxed);
-            }
-        }
-
-        if (loading_.load(std::memory_order_relaxed)) return RE::BSEventNotifyControl::kContinue;
-
-        bool matched = false;
-
-        if (!toggleUserEvent_.empty() && evName == RE::BSFixedString(toggleUserEvent_.c_str())) {
-            matched = isPress;
-        }
-
-        if (!matched && toggleKeyCode_ != 0 && isPress && be->idCode == toggleKeyCode_) {
-            matched = true;
-        }
-
-        if (matched) {
-            const auto now = std::chrono::steady_clock::now();
-            if (now - lastToggle_ >= toggleCooldown_) {
-                if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
-                    const float before = CaseToDelta(ComputeCase(pc), pc);
-                    joggingMode_ = !joggingMode_;
-                    const float after = CaseToDelta(ComputeCase(pc), pc);
-                    const float diff = after - before;
-
-                    if (std::fabs(diff) > 0.01f) {
-                        ModSpeedMult(pc, diff);
-                    }
-                    currentDelta = after;
-                    ForceSpeedRefresh(pc);
+            if (!sprintUserEvent_.empty() && evName == RE::BSFixedString(sprintUserEvent_.c_str())) {
+                if (be->value > 0.0f) {
+                    lastSprintMs_.store(NowMs(), std::memory_order_relaxed);
+                } else {
+                    lastSprintMs_.store(0, std::memory_order_relaxed);
                 }
-                lastToggle_ = now;
             }
-            break;
+
+            if (evName == "Forward") {
+                setAxis(moveY_, isDown ? +1.0f : (moveY_ > 0.0f ? 0.0f : moveY_));
+            } else if (evName == "Back") {
+                setAxis(moveY_, isDown ? -1.0f : (moveY_ < 0.0f ? 0.0f : moveY_));
+            } else if (evName == "Strafe Left" || evName == "StrafeLeft" || evName == "MoveLeft") {
+                setAxis(moveX_, isDown ? -1.0f : (moveX_ < 0.0f ? 0.0f : moveX_));
+            } else if (evName == "Strafe Right" || evName == "StrafeRight" || evName == "MoveRight") {
+                setAxis(moveX_, isDown ? +1.0f : (moveX_ > 0.0f ? 0.0f : moveX_));
+            }
+
+            if (loading_.load(std::memory_order_relaxed)) {
+                continue;
+            }
+
+            // Jogging-Toggle
+            bool matched = false;
+            if (!toggleUserEvent_.empty() && evName == RE::BSFixedString(toggleUserEvent_.c_str())) {
+                matched = isPress;
+            }
+            if (!matched && toggleKeyCode_ != 0 && isPress && be->idCode == toggleKeyCode_) {
+                matched = true;
+            }
+
+            if (matched) {
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastToggle_ >= toggleCooldown_) {
+                    if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+                        const float before = CaseToDelta(ComputeCase(pc), pc);
+                        joggingMode_ = !joggingMode_;
+                        const float after = CaseToDelta(ComputeCase(pc), pc);
+                        const float diff = after - before;
+
+                        if (std::fabs(diff) > 0.01f) {
+                            ModSpeedMult(pc, diff);
+                        }
+                        currentDelta = after;
+                        ForceSpeedRefresh(pc);
+                    }
+                    lastToggle_ = now;
+                }
+            }
+        }
+
+        // --- Analog-Thumbstick (Controller) ---
+        else if (e->eventType == RE::INPUT_EVENT_TYPE::kThumbstick) {
+            auto* te = static_cast<RE::ThumbstickEvent*>(e);
+
+            if (te) {
+                float nx = te->xValue;
+                float ny = te->yValue;
+
+                // Deadzone
+                const float dead = 0.12f;
+                if (std::fabs(nx) < dead) nx = 0.f;
+                if (std::fabs(ny) < dead) ny = 0.f;
+
+                setAxis(moveX_, nx);
+                setAxis(moveY_, ny);
+            }
+        }
+    }
+
+    if (axisChanged) {
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            if (UpdateDiagonalPenalty(pc)) {
+                ForceSpeedRefresh(pc);
+            }
         }
     }
 
     return RE::BSEventNotifyControl::kContinue;
 }
+
 
 void SpeedController::UpdateBindingsFromSettings() {
     toggleKeyCode_ = Settings::toggleSpeedKey.load();
@@ -260,6 +306,42 @@ void SpeedController::OnPostLoadGame() {
     });
 }
 
+bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a) {
+    if (!a) return false;
+
+    const float ax = std::fabs(moveX_);
+    const float ay = std::fabs(moveY_);
+    const float mag = std::sqrt(moveX_ * moveX_ + moveY_ * moveY_);
+    const float maxc = std::max(ax, ay);
+
+    float f = 1.0f;
+    if (mag > 1e-4f && maxc > 0.0f) {
+        f = std::min(1.0f, maxc / mag);
+    }
+
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return false;
+
+    if (std::fabs(diagDelta_) > 0.001f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -diagDelta_);
+        diagDelta_ = 0.0f;
+    }
+
+    if (f >= 0.999f) {
+        return false;
+    }
+
+    const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
+
+    const float newDiag = curSM * (f - 1.0f);
+
+    if (std::fabs(newDiag) > 0.001f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, newDiag);
+        diagDelta_ = newDiag;
+        return true;
+    }
+    return false;
+}
 
 float SpeedController::CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) const {
     float base = 0.0f;
@@ -316,12 +398,22 @@ void SpeedController::Apply() {
 
     const MoveCase mc = ComputeCase(pc);
     const float want = CaseToDelta(mc, pc);
-
     const float diff = want - currentDelta;
+
+    bool changed = false;
 
     if (std::fabs(diff) > 0.01f) {
         ModSpeedMult(pc, diff);
         currentDelta = want;
+        ForceSpeedRefresh(pc);
+        changed = true;
+    }
+
+    if (UpdateDiagonalPenalty(pc)) {
+        changed = true;
+    }
+
+    if (changed) {
         ForceSpeedRefresh(pc);
     }
 }
