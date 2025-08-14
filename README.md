@@ -1,5 +1,7 @@
 # Dynamic Speed Controller
 
+> [![Download Latest Release](https://img.shields.io/github/v/release/DanjelPiDev/TES5-DynamicSpeedController)](https://github.com/DanjelPiDev/TES5-DynamicSpeedController/releases/latest)
+
 Tiny SKSE plugin that adjusts the player's SpeedMult dynamically (drawn/sneak/jog/sprint/combat) without an ESP and without MCM.
 All tuning is done via a simple JSON file.
 
