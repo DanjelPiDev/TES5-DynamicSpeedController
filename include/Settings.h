@@ -17,6 +17,24 @@ struct Settings {
     static inline std::string toggleSpeedEvent{"Shout"};
     static inline std::string sprintEventName{"Sprint"};
 
+    // Location stuff
+    static bool ParseFormSpec(const std::string& spec, std::string& plugin, std::uint32_t& id);
+
+    struct FormSpec {
+        std::string plugin;
+        std::uint32_t id = 0;
+        float value = 0.f;
+    };
+
+    static inline std::vector<FormSpec> reduceInLocationType;      // BGSKeyword*
+    static inline std::vector<FormSpec> reduceInLocationSpecific;  // BGSLocation*
+
+    enum class LocationAffects { DefaultOnly, AllStates };
+    enum class LocationMode { Replace, Add };
+
+    static inline LocationAffects locationAffects{LocationAffects::DefaultOnly};
+    static inline LocationMode locationMode{LocationMode::Replace};
+
     static bool SaveToJson(const std::filesystem::path& file);
     static bool LoadFromJson(const std::filesystem::path& file);
 

@@ -6,6 +6,37 @@ static int findIndex(const std::string& cur, const char* const* arr, int n) {
     return -1;
 }
 
+static bool MakeFormSpecFromForm(RE::TESForm* form, std::string& out) {
+    if (!form) return false;
+    auto* file = form->GetFile(0);
+    if (!file) return false;
+
+    std::string_view fname = file->GetFilename();
+    std::uint32_t localId = form->GetLocalFormID();
+
+    char buf[260];
+    std::snprintf(buf, sizeof(buf), "%.*s|0x%06X", static_cast<int>(fname.size()), fname.data(), localId);
+
+    out = buf;
+    return true;
+}
+
+
+static bool GetCurrentLocationSpec(std::string& out) {
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (!pc) return false;
+    RE::BGSLocation* loc = nullptr;
+
+    if (auto* l = pc->GetCurrentLocation())
+        loc = l;
+    else if (auto* cell = pc->GetParentCell())
+        loc = cell->GetLocation();
+
+    if (!loc) return false;
+    return MakeFormSpecFromForm(loc, out);
+}
+
+
 
 void UI::Register() {
     if (!SKSEMenuFramework::IsInstalled()) {
@@ -13,6 +44,7 @@ void UI::Register() {
     }
     SKSEMenuFramework::SetSection("Dynamic Speed Controller");
     SKSEMenuFramework::AddSectionItem("Speed Settings", SpeedConfig::Render);
+    SKSEMenuFramework::AddSectionItem("Location Rules", SpeedConfig::RenderLocations);
 }
 
 void __stdcall UI::SpeedConfig::Render() {
@@ -123,5 +155,137 @@ void __stdcall UI::SpeedConfig::Render() {
 
     if (ImGui::Button("Save Settings")) {
         Settings::SaveToJson(Settings::DefaultPath());
+    }
+}
+
+
+void __stdcall UI::SpeedConfig::RenderLocations() {
+    ImGui::Text("Location-based Modifiers");
+    ImGui::Separator();
+
+    {
+        int aff = (Settings::locationAffects == Settings::LocationAffects::AllStates) ? 1 : 0;
+        if (ImGui::RadioButton("Affect Default/Out-of-combat only", aff == 0)) {
+            Settings::locationAffects = Settings::LocationAffects::DefaultOnly;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Affect All Movement States", aff == 1)) {
+            Settings::locationAffects = Settings::LocationAffects::AllStates;
+        }
+
+        int mode = (Settings::locationMode == Settings::LocationMode::Add) ? 1 : 0;
+        if (ImGui::RadioButton("Replace base reduction", mode == 0)) {
+            Settings::locationMode = Settings::LocationMode::Replace;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Add to base reduction", mode == 1)) {
+            Settings::locationMode = Settings::LocationMode::Add;
+        }
+    }
+
+    ImGui::Spacing();
+
+    // --- Specific Locations (BGSLocation) ---
+    if (ImGui::CollapsingHeader("Specific Locations (BGSLocation)", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static char specBuf[256] = {};
+        static float specVal = 30.0f;
+
+        ImGui::InputText("Form (Plugin|0xID)", specBuf, sizeof(specBuf));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Use Current Location")) {
+            std::string cur;
+            if (GetCurrentLocationSpec(cur)) {
+                std::snprintf(specBuf, sizeof(specBuf), "%s", cur.c_str());
+            }
+        }
+        ImGui::SliderFloat("Value (reduce)", &specVal, 0.f, 100.f, "%.1f");
+
+        if (ImGui::Button("Add Specific")) {
+            Settings::FormSpec fs;
+            if (Settings::ParseFormSpec(specBuf, fs.plugin, fs.id)) {
+                fs.value = std::max(0.f, std::min(100.f, specVal));
+                Settings::reduceInLocationSpecific.push_back(std::move(fs));
+                specBuf[0] = '\0';
+            }
+        }
+
+        // List
+        if (ImGui::BeginTable("specLocTable", 3, ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders)) {
+            ImGui::TableSetupColumn("Form");
+            ImGui::TableSetupColumn("Value");
+            ImGui::TableSetupColumn("Remove");
+            ImGui::TableHeadersRow();
+
+            for (int i = 0; i < (int)Settings::reduceInLocationSpecific.size(); ++i) {
+                auto& fs = Settings::reduceInLocationSpecific[i];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Text("%s|0x%06X", fs.plugin.c_str(), fs.id);
+                ImGui::TableSetColumnIndex(1);
+                float v = fs.value;
+                if (ImGui::DragFloat(("##specv" + std::to_string(i)).c_str(), &v, 0.1f, 0.f, 100.f, "%.1f")) {
+                    fs.value = std::max(0.f, std::min(100.f, v));
+                }
+                ImGui::TableSetColumnIndex(2);
+                if (ImGui::SmallButton(("X##spec" + std::to_string(i)).c_str())) {
+                    Settings::reduceInLocationSpecific.erase(Settings::reduceInLocationSpecific.begin() + i);
+                    --i;
+                }
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    ImGui::Spacing();
+
+    // --- Location Types (BGSKeyword) ---
+    if (ImGui::CollapsingHeader("Location Types (BGSKeyword e.g. LocType*)", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static char typeBuf[256] = {};
+        static float typeVal = 45.0f;
+
+        ImGui::InputText("Keyword (Plugin|0xID)", typeBuf, sizeof(typeBuf));
+        ImGui::SliderFloat("Value (reduce)", &typeVal, 0.f, 100.f, "%.1f");
+
+        if (ImGui::Button("Add Type")) {
+            Settings::FormSpec fs;
+            if (Settings::ParseFormSpec(typeBuf, fs.plugin, fs.id)) {
+                fs.value = std::max(0.f, std::min(100.f, typeVal));
+                Settings::reduceInLocationType.push_back(std::move(fs));
+                typeBuf[0] = '\0';
+            }
+        }
+
+        if (ImGui::BeginTable("typeLocTable", 3, ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders)) {
+            ImGui::TableSetupColumn("Keyword");
+            ImGui::TableSetupColumn("Value");
+            ImGui::TableSetupColumn("Remove");
+            ImGui::TableHeadersRow();
+
+            for (int i = 0; i < (int)Settings::reduceInLocationType.size(); ++i) {
+                auto& fs = Settings::reduceInLocationType[i];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Text("%s|0x%06X", fs.plugin.c_str(), fs.id);
+                ImGui::TableSetColumnIndex(1);
+                float v = fs.value;
+                if (ImGui::DragFloat(("##typev" + std::to_string(i)).c_str(), &v, 0.1f, 0.f, 100.f, "%.1f")) {
+                    fs.value = std::max(0.f, std::min(100.f, v));
+                }
+                ImGui::TableSetColumnIndex(2);
+                if (ImGui::SmallButton(("X##type" + std::to_string(i)).c_str())) {
+                    Settings::reduceInLocationType.erase(Settings::reduceInLocationType.begin() + i);
+                    --i;
+                }
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("Save Location Rules")) {
+        Settings::SaveToJson(Settings::DefaultPath());
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            SpeedController::GetSingleton()->RefreshNow();
+        }
     }
 }

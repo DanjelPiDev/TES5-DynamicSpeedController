@@ -8,5 +8,6 @@ namespace UI {
 
     namespace SpeedConfig {
         void __stdcall Render();
+        void __stdcall RenderLocations();
     }
 }

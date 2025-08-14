@@ -7,5 +7,7 @@
   "kNoReductionInCombat": true,
   "kToggleSpeedKey": 269,
   "kToggleSpeedEvent": "Shout",
-  "kSprintEventName": "Sprint"
+  "kSprintEventName": "Sprint",
+  "kReduceInLocationSpecific": [],
+  "kReduceInLocationType": []
 }

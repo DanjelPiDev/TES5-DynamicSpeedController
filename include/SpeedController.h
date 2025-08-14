@@ -21,6 +21,7 @@ public:
     void OnPostLoadGame();
     void OnPreLoadGame();
 
+    void RefreshNow();
     void UpdateBindingsFromSettings();
 
     bool GetJoggingMode() const;
