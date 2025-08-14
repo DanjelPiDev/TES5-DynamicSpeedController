@@ -43,8 +43,27 @@ void UI::Register() {
         return;
     }
     SKSEMenuFramework::SetSection("Dynamic Speed Controller");
+    SKSEMenuFramework::AddSectionItem("General Settings", SpeedConfig::RenderGeneral);
     SKSEMenuFramework::AddSectionItem("Speed Settings", SpeedConfig::Render);
+    SKSEMenuFramework::AddSectionItem("Attack Settings", SpeedConfig::RenderAttack);
     SKSEMenuFramework::AddSectionItem("Location Rules", SpeedConfig::RenderLocations);
+}
+
+void __stdcall UI::SpeedConfig::RenderGeneral() {
+    ImGui::Text("Movement Speed Modifiers");
+
+    bool affectNPCs = Settings::enableSpeedScalingForNPCs.load();
+    if (ImGui::Checkbox("Affect NPCs too?", &affectNPCs)) {
+        Settings::enableSpeedScalingForNPCs.store(affectNPCs);
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+    }
+
+    if (ImGui::Button("Save Settings")) {
+        Settings::SaveToJson(Settings::DefaultPath());
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            SpeedController::GetSingleton()->RefreshNow();
+        }
+    }
 }
 
 void __stdcall UI::SpeedConfig::Render() {
@@ -155,6 +174,67 @@ void __stdcall UI::SpeedConfig::Render() {
 
     if (ImGui::Button("Save Settings")) {
         Settings::SaveToJson(Settings::DefaultPath());
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            SpeedController::GetSingleton()->RefreshNow();
+        }
+    }
+}
+
+void __stdcall UI::SpeedConfig::RenderAttack() {
+    ImGui::Text("Attack Speed");
+    ImGui::Separator();
+
+    bool atkEnabled = Settings::attackSpeedEnabled.load();
+    if (ImGui::Checkbox("Enable Attack Speed Scaling", &atkEnabled)) {
+        Settings::attackSpeedEnabled.store(atkEnabled);
+    }
+
+    bool drawnOnly = Settings::attackOnlyWhenDrawn.load();
+    if (ImGui::Checkbox("Only apply when weapon drawn", &drawnOnly)) {
+        Settings::attackOnlyWhenDrawn.store(drawnOnly);
+    }
+
+    float base = Settings::attackBase.load();
+    if (ImGui::SliderFloat("Base Multiplier", &base, 0.3f, 20.0f, "%.2f")) {
+        Settings::attackBase.store(base);
+    }
+
+    float pivot = Settings::weightPivot.load();
+    if (ImGui::SliderFloat("Weight Pivot", &pivot, 0.0f, 50.0f, "%.1f")) {
+        Settings::weightPivot.store(pivot);
+    }
+
+    float slope = Settings::weightSlope.load();
+    if (ImGui::SliderFloat("Weight Slope (per weight unit)", &slope, -1.00f, 1.00f, "%.3f")) {
+        Settings::weightSlope.store(slope);
+    }
+
+    bool useScale = Settings::usePlayerScale.load();
+    if (ImGui::Checkbox("Scale attackspeed by Player Size", &useScale)) {
+        Settings::usePlayerScale.store(useScale);
+    }
+
+    float ss = Settings::scaleSlope.load();
+    if (ImGui::SliderFloat("Scale Slope (per +1.0 size)", &ss, -1.0f, 1.0f, "%.2f")) {
+        Settings::scaleSlope.store(ss);
+    }
+
+    float minMul = Settings::minAttackMult.load();
+    float maxMul = Settings::maxAttackMult.load();
+    if (ImGui::DragFloat2("Clamp [min, max]", &minMul, 0.01f, 0.1f, 10.0f, "%.2f")) {
+        minMul = std::max(0.1f, std::min(10.0f, minMul));
+        Settings::minAttackMult.store(minMul);
+    }
+    if (ImGui::DragFloat("##MaxAttack", &maxMul, 0.01f, 0.1f, 10.0f, "%.2f")) {
+        maxMul = std::max(0.1f, std::min(10.0f, maxMul));
+        Settings::maxAttackMult.store(maxMul);
+    }
+
+    if (ImGui::Button("Save Settings")) {
+        Settings::SaveToJson(Settings::DefaultPath());
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            SpeedController::GetSingleton()->RefreshNow();
+        }
     }
 }
 

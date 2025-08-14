@@ -19,9 +19,12 @@ void SpeedController::Install() {
     Settings::LoadFromJson(Settings::DefaultPath());
     LoadToggleBindingFromJson();
 
+    prevAffectNPCs_ = Settings::enableSpeedScalingForNPCs.load();
+
     if (auto* holder = RE::ScriptEventSourceHolder::GetSingleton()) {
         holder->AddEventSink<RE::TESCombatEvent>(this);
         holder->AddEventSink<RE::TESLoadGameEvent>(this);
+        holder->AddEventSink<RE::TESEquipEvent>(this);
     }
     if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
         pc->AddAnimationGraphEventSink(this);
@@ -73,6 +76,23 @@ static std::optional<float> ComputeLocationValue(const RE::PlayerCharacter* pc) 
     }
     return std::nullopt;
 }
+
+
+RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESEquipEvent* evn,
+                                                       RE::BSTEventSource<RE::TESEquipEvent>*) {
+    if (!evn) return RE::BSEventNotifyControl::kContinue;
+
+    RE::TESObjectREFR* ref = evn->actor.get();
+    RE::Actor* a = ref ? ref->As<RE::Actor>() : nullptr;
+    if (!a) return RE::BSEventNotifyControl::kContinue;
+
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc || Settings::enableSpeedScalingForNPCs.load()) {
+        UpdateAttackSpeed(a);
+    }
+    return RE::BSEventNotifyControl::kContinue;
+}
+
 
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESLoadGameEvent*, RE::BSTEventSource<RE::TESLoadGameEvent>*) {
@@ -167,9 +187,9 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
                 const auto now = std::chrono::steady_clock::now();
                 if (now - lastToggle_ >= toggleCooldown_) {
                     if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
-                        const float before = CaseToDelta(ComputeCase(pc), pc);
+                        const float before = CaseToDelta(pc);
                         joggingMode_ = !joggingMode_;
-                        const float after = CaseToDelta(ComputeCase(pc), pc);
+                        const float after = CaseToDelta(pc);
                         const float diff = after - before;
 
                         if (std::fabs(diff) > 0.01f) {
@@ -212,6 +232,72 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
 
     return RE::BSEventNotifyControl::kContinue;
 }
+
+float SpeedController::ComputeEquippedWeight(const RE::Actor* a) const {
+    if (!a) return 0.0f;
+    auto getWeight = [](RE::TESForm* f) -> float {
+        if (!f) return 0.0f;
+        if (auto* bo = f->As<RE::TESBoundObject>()) {
+            return bo->GetWeight();
+        }
+        return 0.0f;
+    };
+
+    if (auto* r = a->GetEquippedObject(false)) {
+        return getWeight(r);
+    }
+    if (auto* l = a->GetEquippedObject(true)) {
+        return getWeight(l);
+    }
+    return 0.0f;
+}
+
+float SpeedController::GetPlayerScaleSafe(const RE::Actor* a) const {
+    if (!a) return 1.0f;
+    float s = 1.0f;
+    try {
+        s = a->GetScale();
+    } catch (...) {
+    }
+    if (s <= 0.01f || s > 10.0f) s = 1.0f;
+    return s;
+}
+
+void SpeedController::UpdateAttackSpeed(RE::Actor* actor) {
+    if (!actor) return;
+
+    float& myDelta = AttackDeltaSlot(actor);
+
+    if (std::fabs(myDelta) > 1e-6f) {
+        if (auto* avo = actor->AsActorValueOwner()) {
+            avo->ModActorValue(RE::ActorValue::kWeaponSpeedMult, -myDelta);
+        }
+        myDelta = 0.0f;
+    }
+
+    if (!Settings::attackSpeedEnabled) return;
+    if (Settings::attackOnlyWhenDrawn && !IsWeaponDrawnByState(actor)) return;
+
+    const float w = ComputeEquippedWeight(actor);
+    const float scale = Settings::usePlayerScale ? GetPlayerScaleSafe(actor) : 1.0f;
+
+    float target = Settings::attackBase + Settings::weightSlope * (w - Settings::weightPivot) +
+                   (Settings::usePlayerScale ? (Settings::scaleSlope * (scale - 1.0f)) : 0.0f);
+
+    target = std::max(Settings::minAttackMult.load(), std::min(Settings::maxAttackMult.load(), target));
+
+    auto* avo = actor->AsActorValueOwner();
+    if (!avo) return;
+
+    const float cur = avo->GetActorValue(RE::ActorValue::kWeaponSpeedMult);
+    const float delta = target - cur;
+
+    if (std::fabs(delta) > 1e-4f) {
+        avo->ModActorValue(RE::ActorValue::kWeaponSpeedMult, delta);
+        myDelta = delta;
+    }
+}
+
 
 
 void SpeedController::UpdateBindingsFromSettings() {
@@ -262,6 +348,8 @@ void SpeedController::StartHeartbeat() {
             SKSE::GetTaskInterface()->AddTask([this, &prevSprint]() {
                 this->Apply();
                 if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+                    this->UpdateAttackSpeed(pc);
+
                     const bool curSprint = IsSprintingByGraph(pc);
                     if (curSprint != prevSprint) {
                         ForceSpeedRefresh(pc);
@@ -274,6 +362,68 @@ void SpeedController::StartHeartbeat() {
     th_.detach();
 }
 
+void SpeedController::ForEachTargetActor(const std::function<void(RE::Actor*)>& fn) {
+    if (!Settings::enableSpeedScalingForNPCs.load()) return;
+
+    auto* pl = RE::ProcessLists::GetSingleton();
+    if (!pl) return;
+
+    for (auto& h : pl->highActorHandles) {
+        RE::Actor* a = h.get().get();
+        if (!a) continue;
+        fn(a);
+    }
+}
+
+void SpeedController::RevertAllNPCDeltas() {
+    auto* pl = RE::ProcessLists::GetSingleton();
+    if (!pl) {
+        currentDeltaNPC_.clear();
+        attackDeltaNPC_.clear();
+        return;
+    }
+
+    for (auto& h : pl->highActorHandles) {
+        RE::Actor* a = h.get().get();
+        if (!a) continue;
+
+        const auto id = GetID(a);
+        auto* avo = a->AsActorValueOwner();
+        if (!avo) continue;
+
+        if (auto it = currentDeltaNPC_.find(id); it != currentDeltaNPC_.end()) {
+            if (std::fabs(it->second) > 0.001f) {
+                avo->ModActorValue(RE::ActorValue::kSpeedMult, -it->second);
+            }
+        }
+
+        if (auto jt = attackDeltaNPC_.find(id); jt != attackDeltaNPC_.end()) {
+            if (std::fabs(jt->second) > 1e-6f) {
+                avo->ModActorValue(RE::ActorValue::kWeaponSpeedMult, -jt->second);
+            }
+        }
+
+        ForceSpeedRefresh(a);
+    }
+
+    currentDeltaNPC_.clear();
+    attackDeltaNPC_.clear();
+}
+
+
+float& SpeedController::AttackDeltaSlot(RE::Actor* a) {
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) return attackDelta_;
+    return attackDeltaNPC_[GetID(a)];
+}
+
+float& SpeedController::CurrentDeltaSlot(RE::Actor* a) {
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) return currentDelta;
+    return currentDeltaNPC_[GetID(a)];
+}
+
+
 void SpeedController::TryInitDrawnFromGraph() {
     if (initTried_) return;
     auto* pc = RE::PlayerCharacter::GetSingleton();
@@ -281,14 +431,15 @@ void SpeedController::TryInitDrawnFromGraph() {
     initTried_ = true;
 }
 
-SpeedController::MoveCase SpeedController::ComputeCase(const RE::PlayerCharacter* pc) const {
-    if (Settings::noReductionInCombat && pc->IsInCombat() && IsWeaponDrawnByState(pc)) {
+SpeedController::MoveCase SpeedController::ComputeCase(const RE::Actor* a) const {
+    if (!a) return MoveCase::Default;
+    if (Settings::noReductionInCombat && a->IsInCombat() && IsWeaponDrawnByState(a)) {
         return MoveCase::Combat;
     }
-    if (IsWeaponDrawnByState(pc)) {
+    if (IsWeaponDrawnByState(a)) {
         return MoveCase::Drawn;
     }
-    if (pc->IsSneaking()) {
+    if (a->IsSneaking()) {
         return MoveCase::Sneak;
     }
     return MoveCase::Default;
@@ -299,7 +450,7 @@ void SpeedController::OnPreLoadGame() { loading_.store(true, std::memory_order_r
 void SpeedController::OnPostLoadGame() {
     SKSE::GetTaskInterface()->AddTask([this]() {
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
-            currentDelta = CaseToDelta(ComputeCase(pc), pc);
+            currentDelta = CaseToDelta(pc);
             ForceSpeedRefresh(pc);
         }
         loading_.store(false, std::memory_order_relaxed);
@@ -343,7 +494,8 @@ bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a) {
     return false;
 }
 
-float SpeedController::CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) const {
+float SpeedController::CaseToDelta(const RE::Actor* a) const {
+    const MoveCase c = ComputeCase(a);
     float base = 0.0f;
     switch (c) {
         case MoveCase::Combat:
@@ -362,24 +514,47 @@ float SpeedController::CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) co
 
     if (Settings::locationAffects == Settings::LocationAffects::AllStates ||
         (Settings::locationAffects == Settings::LocationAffects::DefaultOnly && (c == MoveCase::Default))) {
-        if (auto locVal = ComputeLocationValue(pc)) {
-            float locDelta = -(*locVal);
-            if (Settings::locationMode == Settings::LocationMode::Replace) {
-                base = locDelta;
-            } else {
-                base += locDelta;
+        RE::BGSLocation* loc = nullptr;
+        if (a) {
+            if (auto* l = a->GetCurrentLocation())
+                loc = l;
+            else if (auto* cell = a->GetParentCell())
+                loc = cell->GetLocation();
+        }
+        if (loc) {
+            // Specific
+            for (auto& fs : Settings::reduceInLocationSpecific) {
+                if (auto* l = LookupForm<RE::BGSLocation>(fs.plugin, fs.id); l && l == loc) {
+                    base = (Settings::locationMode == Settings::LocationMode::Replace) ? -fs.value : base - fs.value;
+                    goto done_loc;
+                }
+            }
+            // Types
+            if (auto* kwSet = loc->keywords) {
+                for (auto& fs : Settings::reduceInLocationType) {
+                    if (auto* kw = LookupForm<RE::BGSKeyword>(fs.plugin, fs.id); kw) {
+                        if (loc->HasKeyword(kw)) {
+                            base = (Settings::locationMode == Settings::LocationMode::Replace) ? -fs.value
+                                                                                               : base - fs.value;
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
+    done_loc:;
 
-    const bool sprintActiveGraph = IsSprintingByGraph(pc);
-    const uint64_t now = NowMs();
-    const uint64_t last = lastSprintMs_.load(std::memory_order_relaxed);
-    const bool sprintActiveLatch = (last != 0) && (now - last <= kSprintLatchMs);
-
-    if (sprintActiveGraph || sprintActiveLatch) {
-        base += Settings::increaseSprinting.load();
+    bool sprint = IsSprintingByGraph(a);
+    if (!sprint) {
+        auto* pc = RE::PlayerCharacter::GetSingleton();
+        if (a == pc) {
+            const uint64_t now = NowMs();
+            const uint64_t last = lastSprintMs_.load(std::memory_order_relaxed);
+            sprint = (last != 0) && (now - last <= kSprintLatchMs);
+        }
     }
+    if (sprint) base += Settings::increaseSprinting.load();
     return base;
 }
 
@@ -393,30 +568,48 @@ void SpeedController::RefreshNow() {
 void SpeedController::Apply() {
     if (loading_.load(std::memory_order_relaxed)) return;
 
-    auto* pc = RE::PlayerCharacter::GetSingleton();
+    const bool cur = Settings::enableSpeedScalingForNPCs.load();
+    if (prevAffectNPCs_ && !cur) {
+        RevertAllNPCDeltas();
+    }
+    prevAffectNPCs_ = cur;
+
+    RE::PlayerCharacter* pc = RE::PlayerCharacter::GetSingleton();
     if (!pc) return;
 
-    const MoveCase mc = ComputeCase(pc);
-    const float want = CaseToDelta(mc, pc);
-    const float diff = want - currentDelta;
+    ApplyFor(pc);
+
+    ForEachTargetActor([&](RE::Actor* a) {
+        if (a != pc) ApplyFor(a);
+    });
+}
+
+void SpeedController::ApplyFor(RE::Actor* a) {
+    if (!a) return;
+
+    const float want = CaseToDelta(a);
+    float& cur = CurrentDeltaSlot(a);
+    const float diff = want - cur;
 
     bool changed = false;
-
     if (std::fabs(diff) > 0.01f) {
-        ModSpeedMult(pc, diff);
-        currentDelta = want;
-        ForceSpeedRefresh(pc);
+        ModSpeedMult(a, diff);
+        cur = want;
         changed = true;
     }
 
-    if (UpdateDiagonalPenalty(pc)) {
-        changed = true;
+    if (a == RE::PlayerCharacter::GetSingleton()) {
+        if (UpdateDiagonalPenalty(a)) {
+            changed = true;
+        }
     }
+    UpdateAttackSpeed(a);
 
     if (changed) {
-        ForceSpeedRefresh(pc);
+        ForceSpeedRefresh(a);
     }
 }
+
 
 void SpeedController::ModSpeedMult(RE::Actor* actor, float delta) {
     if (!actor) return;

@@ -7,6 +7,8 @@
 #include "nlohmann/json.hpp"
 
 struct Settings {
+    static inline std::atomic<bool> enableSpeedScalingForNPCs{false};
+
     static inline std::atomic<float> reduceOutOfCombat{45.0f};
     static inline std::atomic<float> reduceJoggingOutOfCombat{15.0f};
     static inline std::atomic<float> reduceDrawn{15.0f};
@@ -16,6 +18,19 @@ struct Settings {
     static inline std::atomic<int> toggleSpeedKey{269};
     static inline std::string toggleSpeedEvent{"Shout"};
     static inline std::string sprintEventName{"Sprint"};
+
+    // --- Attack speed scaling ---
+    static inline std::atomic<bool> attackSpeedEnabled{true};
+    static inline std::atomic<bool> attackOnlyWhenDrawn{true};
+
+    static inline std::atomic<float> attackBase{1.0f};     // baseline multiplier
+    static inline std::atomic<float> weightPivot{10.0f};   // reference weight in Skyrim units
+    static inline std::atomic<float> weightSlope{-0.03f};  // per weight unit (negative slows heavy)
+    static inline std::atomic<bool> usePlayerScale{false};
+    static inline std::atomic<float> scaleSlope{0.25f};     // +0.25 per +1.0 scale
+
+    static inline std::atomic<float> minAttackMult{0.6f};
+    static inline std::atomic<float> maxAttackMult{1.8f};
 
     // Location stuff
     static bool ParseFormSpec(const std::string& spec, std::string& plugin, std::uint32_t& id);

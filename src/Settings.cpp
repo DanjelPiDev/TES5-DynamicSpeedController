@@ -38,6 +38,17 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kToggleSpeedEvent"] = toggleSpeedEvent;
     j["kSprintEventName"] = sprintEventName;
 
+    j["kAttackSpeedEnabled"] = attackSpeedEnabled.load();
+    j["kAttackOnlyWhenDrawn"] = attackOnlyWhenDrawn.load();
+    j["kEnableSpeedScalingForNPCs"] = enableSpeedScalingForNPCs.load();
+    j["kAttackBase"] = attackBase.load();
+    j["kWeightPivot"] = weightPivot.load();
+    j["kWeightSlope"] = weightSlope.load();
+    j["kUsePlayerScale"] = usePlayerScale.load();
+    j["kScaleSlope"] = scaleSlope.load();
+    j["kMinAttackMult"] = minAttackMult.load();
+    j["kMaxAttackMult"] = maxAttackMult.load();
+
     auto dumpList = [](const std::vector<FormSpec>& v) {
         nlohmann::json arr = nlohmann::json::array();
         for (auto& fs : v) {
@@ -112,6 +123,36 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
         sprintEventName = v;
     }
 
+    if (j.contains("kAttackSpeedEnabled")) {
+        attackSpeedEnabled = j["kAttackSpeedEnabled"].get<bool>();
+    }
+    if (j.contains("kAttackOnlyWhenDrawn")) {
+        attackOnlyWhenDrawn = j["kAttackOnlyWhenDrawn"].get<bool>();
+    }
+    if (j.contains("kEnableSpeedScalingForNPCs")) {
+        enableSpeedScalingForNPCs = j["kEnableSpeedScalingForNPCs"].get<bool>();
+    }
+    if (j.contains("kAttackBase")) {
+        attackBase = j["kAttackBase"].get<float>();
+    }
+    if (j.contains("kWeightPivot")) {
+        weightPivot = j["kWeightPivot"].get<float>();
+    }
+    if (j.contains("kWeightSlope")) {
+        weightSlope = j["kWeightSlope"].get<float>();
+    }
+    if (j.contains("kUsePlayerScale")) {
+        usePlayerScale = j["kUsePlayerScale"].get<bool>();
+    }
+    if (j.contains("kScaleSlope")) {
+        scaleSlope = j["kScaleSlope"].get<float>();
+    }
+    if (j.contains("kMinAttackMult")) {
+        minAttackMult = j["kMinAttackMult"].get<float>();
+    }
+    if (j.contains("kMaxAttackMult")) {
+        maxAttackMult = j["kMaxAttackMult"].get<float>();
+    }
 
     reduceInLocationType.clear();
     reduceInLocationSpecific.clear();

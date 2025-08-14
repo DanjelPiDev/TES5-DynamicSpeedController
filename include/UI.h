@@ -7,7 +7,9 @@ namespace UI {
     void Register();
 
     namespace SpeedConfig {
+        void __stdcall RenderGeneral();
         void __stdcall Render();
+        void __stdcall RenderAttack();
         void __stdcall RenderLocations();
     }
 }

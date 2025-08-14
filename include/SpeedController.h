@@ -7,7 +7,8 @@
 class SpeedController : public RE::BSTEventSink<RE::TESCombatEvent>,
                         public RE::BSTEventSink<RE::TESLoadGameEvent>,
                         public RE::BSTEventSink<RE::BSAnimationGraphEvent>,
-                        public RE::BSTEventSink<RE::InputEvent*> {
+                        public RE::BSTEventSink<RE::InputEvent*>,
+                        public RE::BSTEventSink<RE::TESEquipEvent> {
 public:
     static SpeedController* GetSingleton();
 
@@ -17,6 +18,7 @@ public:
     virtual RE::BSEventNotifyControl ProcessEvent(const RE::TESCombatEvent*, RE::BSTEventSource<RE::TESCombatEvent>*) override;
     virtual RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent*, RE::BSTEventSource<RE::BSAnimationGraphEvent>*) override;
     virtual RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* evns, RE::BSTEventSource<RE::InputEvent*>*) override;
+    virtual RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent*, RE::BSTEventSource<RE::TESEquipEvent>*) override;
 
     void OnPostLoadGame();
     void OnPreLoadGame();
@@ -38,7 +40,13 @@ private:
     float moveY_ = 0.0f;  // -1 ... +1  (forward/backward)
     float diagDelta_ = 0.0f;
 
+    // Deltas: Player vs. NPCs
     float currentDelta = 0.0f;
+    float attackDelta_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> currentDeltaNPC_;
+    std::unordered_map<std::uint32_t, float> attackDeltaNPC_;
+    bool prevAffectNPCs_ = false;
+
     bool initTried_ = false;
     std::atomic<bool> run_ = false;
     std::atomic<bool> loading_{false};
@@ -59,10 +67,24 @@ private:
 
     void StartHeartbeat();
     void TryInitDrawnFromGraph();
-    MoveCase ComputeCase(const RE::PlayerCharacter* pc) const;
-    float CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) const;
+
+    MoveCase ComputeCase(const RE::Actor* pc) const;
+    float CaseToDelta(const RE::Actor* pc) const;
+
     void Apply();
+    void ApplyFor(RE::Actor* a);
+
     bool UpdateDiagonalPenalty(RE::Actor* a);
+    void UpdateAttackSpeed(RE::Actor* actor);
+    float ComputeEquippedWeight(const RE::Actor* a) const;
+    float GetPlayerScaleSafe(const RE::Actor* a) const;
+
+    static std::uint32_t GetID(const RE::Actor* a) { return a ? a->GetFormID() : 0; }
+    float& AttackDeltaSlot(RE::Actor* a);
+    float& CurrentDeltaSlot(RE::Actor* a);
+
+    void ForEachTargetActor(const std::function<void(RE::Actor*)>& fn);
+    void RevertAllNPCDeltas(); 
 
     static void ModSpeedMult(RE::Actor* actor, float delta);
     static void ForceSpeedRefresh(RE::Actor* actor);

@@ -9,5 +9,15 @@
   "kToggleSpeedEvent": "Shout",
   "kSprintEventName": "Sprint",
   "kReduceInLocationSpecific": [],
-  "kReduceInLocationType": []
+  "kReduceInLocationType": [],
+  "kAttackSpeedEnabled": true,
+  "kAttackOnlyWhenDrawn": true,
+  "kAttackBase": 1.00,
+  "kWeightPivot": 10.0,
+  "kWeightSlope": -0.03,
+  "kUsePlayerScale": false,
+  "kScaleSlope": 0.25,
+  "kMinAttackMult": 0.60,
+  "kMaxAttackMult": 1.80,
+  "kEnableSpeedScalingForNPCs": false
 }
