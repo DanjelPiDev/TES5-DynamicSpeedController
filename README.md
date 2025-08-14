@@ -7,6 +7,7 @@ All tuning is done via a simple JSON file.
 - Per-state speed deltas (Default, Jogging, Drawn, Sneak, Sprint)
 - Optional "no reduction while in combat"
 - Toggle between two out-of-combat modes (e.g., Walk vs. Jog) via hotkey or user event
+- Location-based modifiers, set different reductions or increases for specific locations or location types
 - No ESP, no scripts, no MCM, just a DLL + JSON
 
 ## Install
@@ -34,9 +35,37 @@ Open *(Data/SKSE/Plugins/SpeedController.json)*
 
   "kToggleSpeedKey": 269,
   "kToggleSpeedEvent": "Shout",
-  "kSprintEventName": "Sprint"
+  "kSprintEventName": "Sprint",
+
+  "kReduceInLocationSpecific": [],
+  "kReduceInLocationType": []
 }
 ```
+
+Example for an added location:
+```json
+{
+	"kIncreaseSprinting": 25.0,
+	"kLocationAffects": "default",
+	"kLocationMode": "replace",
+	"kNoReductionInCombat": true,
+	"kReduceDrawn": 15.0,
+	"kReduceInLocationSpecific": [
+		{
+			"form": "cceejsse001-hstead.esm|0x000F1E",
+			"value": 58.0
+		}
+	],
+	"kReduceInLocationType": [],
+	"kReduceJoggingOutOfCombat": 25.0,
+	"kReduceOutOfCombat": 45.0,
+	"kReduceSneak": 61.0,
+	"kSprintEventName": "Sprint",
+	"kToggleSpeedEvent": "Shout",
+	"kToggleSpeedKey": 269
+	}
+```
+
 
 #### What the settings do
 - kReduceOutOfCombat: Base reduction when out of combat (weapon sheathed).
@@ -48,6 +77,8 @@ Open *(Data/SKSE/Plugins/SpeedController.json)*
 - kToggleSpeedKey: Keyboard scancode for toggling jogging mode (e.g., 269 = dpadright (https://www.nexusmods.com/skyrimspecialedition/articles/7704%5D) / depends on layout). Set 0 to disable (Or better, don't use it :D).
 - kToggleSpeedEvent: Game user event name that also toggles jogging mode (default "Shout"). Set "" to disable.
 - kSprintEventName: Input event used to latch sprint (default "Sprint"). If you use custom control maps, set the matching event name here.
+- kReduceInLocationSpecific: LocationRules.Specific List of `Plugin|0xFormID` + value pairs for exact locations (e.g. "Skyrim.esm|0x0001A26F" : 30.0). You can also simple go into the cell, open the menu and press the button "Use Current Location".
+- kReduceInLocationType: LocationRules.Types. Same, but for location keywords (e.g. "Skyrim.esm|0x00013793" for LocTypeDungeon).
 
 **Hint**: Use kToggleSpeedEvent, because the key is not always recognized by the game (e.g., when using a controller).
 
