@@ -4,9 +4,6 @@
 #include <thread>
 #include "Settings.h"
 
-#include "RE/Skyrim.h"
-#include "SKSE/SKSE.h"
-
 class SpeedController : public RE::BSTEventSink<RE::TESCombatEvent>,
                         public RE::BSTEventSink<RE::TESLoadGameEvent>,
                         public RE::BSTEventSink<RE::BSAnimationGraphEvent>,
@@ -23,6 +20,8 @@ public:
 
     void OnPostLoadGame();
     void OnPreLoadGame();
+
+    void UpdateBindingsFromSettings();
 
     bool GetJoggingMode() const;
     void SetJoggingMode(bool b);

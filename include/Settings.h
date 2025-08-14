@@ -17,6 +17,7 @@ struct Settings {
     static inline std::string toggleSpeedEvent{"Shout"};
     static inline std::string sprintEventName{"Sprint"};
 
+    static bool SaveToJson(const std::filesystem::path& file);
     static bool LoadFromJson(const std::filesystem::path& file);
 
     static std::filesystem::path DefaultPath();

@@ -127,6 +127,17 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
     return RE::BSEventNotifyControl::kContinue;
 }
 
+void SpeedController::UpdateBindingsFromSettings() {
+    toggleKeyCode_ = Settings::toggleSpeedKey.load();
+    toggleUserEvent_ = Settings::toggleSpeedEvent;
+    sprintUserEvent_ = Settings::sprintEventName;
+
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (pc) {
+        this->Apply();
+        this->ForceSpeedRefresh(pc);
+    }
+}
 
 void SpeedController::LoadToggleBindingFromJson() {
     toggleKeyCode_ = 0;

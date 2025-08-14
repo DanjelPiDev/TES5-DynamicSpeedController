@@ -27,6 +27,7 @@ set(HEADERS
     include/Main.h
     include/SpeedController.h
     include/Settings.h
+    include/UI.h
     include/nlohmann/json.hpp
     include/nlohmann/json_fwd.hpp
 )
@@ -36,6 +37,7 @@ set(SOURCES
     src/Main.cpp
     src/SpeedController.cpp
     src/Settings.cpp
+    src/UI.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/version.rc
 )
 

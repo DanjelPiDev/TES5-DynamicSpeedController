@@ -12,6 +12,25 @@ std::filesystem::path Settings::DefaultPath() {
     return std::filesystem::path("Data") / "SKSE" / "Plugins" / "SpeedController.json";
 }
 
+bool Settings::SaveToJson(const std::filesystem::path& file) {
+    nlohmann::json j;
+    j["kReduceOutOfCombat"] = reduceOutOfCombat.load();
+    j["kReduceJoggingOutOfCombat"] = reduceJoggingOutOfCombat.load();
+    j["kReduceDrawn"] = reduceDrawn.load();
+    j["kReduceSneak"] = reduceSneak.load();
+    j["kIncreaseSprinting"] = increaseSprinting.load();
+    j["kNoReductionInCombat"] = noReductionInCombat.load();
+    j["kToggleSpeedKey"] = toggleSpeedKey.load();
+    j["kToggleSpeedEvent"] = toggleSpeedEvent;
+    j["kSprintEventName"] = sprintEventName;
+
+    std::ofstream out(file);
+    if (!out.is_open()) return false;
+    out << j.dump(4);
+    return true;
+}
+
+
 bool Settings::LoadFromJson(const std::filesystem::path& file) {
     std::ifstream in(file);
     if (!in.is_open()) {

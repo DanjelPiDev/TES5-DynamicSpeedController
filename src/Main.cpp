@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstdint>
 
-using namespace RE;
 using namespace SKSE;
 
 static constexpr std::uint32_t kSerVersion = 1;
@@ -50,9 +49,12 @@ extern "C" __declspec(dllexport) bool SKSEPlugin_Load(const SKSE::LoadInterface*
         switch (message->type) {
             case SKSE::MessagingInterface::kDataLoaded:
                 sc->Install();
+                UI::Register();
+                SKSE::GetTaskInterface()->AddTask([]() { UI::Register(); });
                 break;
             case SKSE::MessagingInterface::kPreLoadGame:
                 sc->OnPreLoadGame();
+                SKSE::GetTaskInterface()->AddTask([]() { UI::Register(); });
                 break;
             case SKSE::MessagingInterface::kPostLoadGame:
                 sc->OnPostLoadGame();
@@ -61,6 +63,5 @@ extern "C" __declspec(dllexport) bool SKSEPlugin_Load(const SKSE::LoadInterface*
                 break;
         }
     });
-
     return true;
 }
