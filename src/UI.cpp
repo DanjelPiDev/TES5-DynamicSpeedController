@@ -50,7 +50,7 @@ void UI::Register() {
 }
 
 void __stdcall UI::SpeedConfig::RenderGeneral() {
-    ImGui::Text("Movement Speed Modifiers");
+    ImGui::Text("General Speed Modifiers");
 
     bool affectNPCs = Settings::enableSpeedScalingForNPCs.load();
     if (ImGui::Checkbox("Affect NPCs too?", &affectNPCs)) {
@@ -225,7 +225,7 @@ void __stdcall UI::SpeedConfig::RenderAttack() {
         minMul = std::max(0.1f, std::min(10.0f, minMul));
         Settings::minAttackMult.store(minMul);
     }
-    if (ImGui::DragFloat("##MaxAttack", &maxMul, 0.01f, 0.1f, 10.0f, "%.2f")) {
+    if (ImGui::DragFloat("Max Attack Multiplier", &maxMul, 0.01f, 0.1f, 10.0f, "%.2f")) {
         maxMul = std::max(0.1f, std::min(10.0f, maxMul));
         Settings::maxAttackMult.store(maxMul);
     }
