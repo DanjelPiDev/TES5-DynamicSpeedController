@@ -20,5 +20,14 @@
   "kMinAttackMult": 0.60,
   "kMaxAttackMult": 1.80,
   "kEnableSpeedScalingForNPCs": false,
-  "kIgnoreBeastForms": true
+  "kIgnoreBeastForms": true,
+  "kSmoothingEnabled": true,
+  "kSmoothingMode": "ExpoThenRate",
+  "kSmoothingHalfLifeMs": 160.0,
+  "kSmoothingMaxChangePerSecond": 120.0,
+  "kSmoothingAffectsNPCs": false,
+  "kSmoothingBypassOnStateChange": true,
+  "kEnableDiagonalSpeedFix": true,
+  "kEnableDiagonalSpeedFixForNPCs": false,
+  "kMinFinalSpeedMult": 10.0
 }

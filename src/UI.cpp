@@ -1,4 +1,9 @@
-#include "UI.h"
+﻿#include "UI.h"
+
+#ifndef IM_ARRAYSIZE
+    #define IM_ARRAYSIZE(_ARR) ((int)(sizeof(_ARR) / sizeof(*(_ARR))))
+#endif
+
 
 static int findIndex(const std::string& cur, const char* const* arr, int n) {
     for (int i = 0; i < n; ++i)
@@ -67,6 +72,53 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
     }
 
     ImGui::Separator();
+    ImGui::Text("Fixes");
+
+    bool dfix = Settings::enableDiagonalSpeedFix.load();
+    if (ImGui::Checkbox("Diagonal Speed Fix (Player)", &dfix)) {
+        Settings::enableDiagonalSpeedFix.store(dfix);
+    }
+
+    bool dfixNPC = Settings::enableDiagonalSpeedFixForNPCs.load();
+    if (ImGui::Checkbox("Diagonal Speed Fix for NPCs", &dfixNPC)) {
+        Settings::enableDiagonalSpeedFixForNPCs.store(dfixNPC);
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Smoothing / Acceleration");
+
+    bool smooth = Settings::smoothingEnabled.load();
+    if (ImGui::Checkbox("Enable smoothing", &smooth)) {
+        Settings::smoothingEnabled.store(smooth);
+    }
+
+    bool smNpc = Settings::smoothingAffectsNPCs.load();
+    if (ImGui::Checkbox("Affects NPCs", &smNpc)) {
+        Settings::smoothingAffectsNPCs.store(smNpc);
+    }
+
+    bool bypass = Settings::smoothingBypassOnStateChange.load();
+    if (ImGui::Checkbox("Bypass on major state change (sprint/drawn/sneak)", &bypass)) {
+        Settings::smoothingBypassOnStateChange.store(bypass);
+    }
+
+    int mode = static_cast<int>(Settings::smoothingMode);
+    const char* modes[] = {"Exponential", "RateLimit", "ExpoThenRate", "Spring"};
+    if (ImGui::Combo("Mode", &mode, modes, IM_ARRAYSIZE(modes))) {
+        Settings::smoothingMode = static_cast<Settings::SmoothingMode>(mode);
+    }
+
+    float hl = Settings::smoothingHalfLifeMs.load();
+    if (ImGui::SliderFloat("Half-life (ms)", &hl, 1.0f, 2000.0f, "%.0f")) {
+        Settings::smoothingHalfLifeMs.store(hl);
+    }
+
+    float maxrate = Settings::smoothingMaxChangePerSecond.load();
+    if (ImGui::SliderFloat("Max Delta per second", &maxrate, 1.0f, 300.0f, "%.0f")) {
+        Settings::smoothingMaxChangePerSecond.store(maxrate);
+    }
+
+    ImGui::Separator();
 
     if (ImGui::Button("Save Settings")) {
         Settings::SaveToJson(Settings::DefaultPath());
@@ -78,6 +130,11 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
 
 void __stdcall UI::SpeedConfig::Render() {
     ImGui::Text("Movement Speed Modifiers");
+
+    float minFinalSpeedMult = Settings::minFinalSpeedMult.load();
+    if (ImGui::SliderFloat("Minimal Final SpeedMult", &minFinalSpeedMult, 0.0f, 100.0f, "%.1f")) {
+        Settings::minFinalSpeedMult.store(minFinalSpeedMult);
+    }
 
     float reduceOutOfCombatVal = Settings::reduceOutOfCombat.load();
     if (ImGui::SliderFloat("Reduce Out of Combat", &reduceOutOfCombatVal, 0.0f, 100.0f, "%.1f")) {
@@ -275,7 +332,7 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
 
     ImGui::Spacing();
 
-    // --- Specific Locations (BGSLocation) ---
+    // Specific Locations (BGSLocation)
     if (ImGui::CollapsingHeader("Specific Locations (BGSLocation)", ImGuiTreeNodeFlags_DefaultOpen)) {
         static char specBuf[256] = {};
         static float specVal = 30.0f;
@@ -299,7 +356,6 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
             }
         }
 
-        // List
         if (ImGui::BeginTable("specLocTable", 3, ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders)) {
             ImGui::TableSetupColumn("Form");
             ImGui::TableSetupColumn("Value");
@@ -328,7 +384,7 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
 
     ImGui::Spacing();
 
-    // --- Location Types (BGSKeyword) ---
+    // Location Types (BGSKeyword)
     if (ImGui::CollapsingHeader("Location Types (BGSKeyword e.g. LocType*)", ImGuiTreeNodeFlags_DefaultOpen)) {
         static char typeBuf[256] = {};
         static float typeVal = 45.0f;

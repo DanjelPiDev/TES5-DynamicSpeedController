@@ -18,6 +18,7 @@ SpeedController* SpeedController::GetSingleton() {
 void SpeedController::Install() {
     Settings::LoadFromJson(Settings::DefaultPath());
     LoadToggleBindingFromJson();
+    lastApplyPlayerMs_ = NowMs();
 
     prevAffectNPCs_ = Settings::enableSpeedScalingForNPCs.load();
 
@@ -106,8 +107,6 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESEquipEvent* 
 
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESLoadGameEvent*, RE::BSTEventSource<RE::TESLoadGameEvent>*) {
-    Settings::LoadFromJson(Settings::DefaultPath());
-
     Settings::LoadFromJson(Settings::DefaultPath());
     LoadToggleBindingFromJson();
     lastSprintMs_.store(0, std::memory_order_relaxed);
@@ -234,8 +233,12 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
 
     if (axisChanged) {
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
-            if (UpdateDiagonalPenalty(pc)) {
-                ForceSpeedRefresh(pc);
+            if (Settings::enableDiagonalSpeedFix.load()) {
+                if (UpdateDiagonalPenalty(pc)) {
+                    ForceSpeedRefresh(pc);
+                }
+            } else {
+                ClearDiagDeltaFor(pc);
             }
         }
     }
@@ -355,7 +358,7 @@ void SpeedController::StartHeartbeat() {
         using namespace std::chrono_literals;
         bool prevSprint = false;
         while (run_) {
-            std::this_thread::sleep_for(750ms);
+            std::this_thread::sleep_for(33ms);
             SKSE::GetTaskInterface()->AddTask([this, &prevSprint]() {
                 this->Apply();
                 if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
@@ -391,6 +394,7 @@ void SpeedController::RevertAllNPCDeltas() {
     if (!pl) {
         currentDeltaNPC_.clear();
         attackDeltaNPC_.clear();
+        diagDeltaNPC_.clear();
         return;
     }
 
@@ -405,12 +409,21 @@ void SpeedController::RevertAllNPCDeltas() {
         if (auto it = currentDeltaNPC_.find(id); it != currentDeltaNPC_.end()) {
             if (std::fabs(it->second) > 0.001f) {
                 avo->ModActorValue(RE::ActorValue::kSpeedMult, -it->second);
+                it->second = 0.0f;
             }
         }
 
         if (auto jt = attackDeltaNPC_.find(id); jt != attackDeltaNPC_.end()) {
             if (std::fabs(jt->second) > 1e-6f) {
                 avo->ModActorValue(RE::ActorValue::kWeaponSpeedMult, -jt->second);
+                jt->second = 0.0f;
+            }
+        }
+
+        if (auto dt = diagDeltaNPC_.find(id); dt != diagDeltaNPC_.end()) {
+            if (std::fabs(dt->second) > 0.001f) {
+                avo->ModActorValue(RE::ActorValue::kSpeedMult, -dt->second);
+                dt->second = 0.0f;
             }
         }
 
@@ -419,7 +432,10 @@ void SpeedController::RevertAllNPCDeltas() {
 
     currentDeltaNPC_.clear();
     attackDeltaNPC_.clear();
+    diagDeltaNPC_.clear();
 }
+
+
 
 
 float& SpeedController::AttackDeltaSlot(RE::Actor* a) {
@@ -468,42 +484,62 @@ void SpeedController::OnPostLoadGame() {
     });
 }
 
-bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a) {
+bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY) {
     if (!a) return false;
 
-    const float ax = std::fabs(moveX_);
-    const float ay = std::fabs(moveY_);
-    const float mag = std::sqrt(moveX_ * moveX_ + moveY_ * moveY_);
+    // f = max(|x|,|y|) / sqrt(x^2 + y^2)   (<= 1)
+    const float ax = std::fabs(inX);
+    const float ay = std::fabs(inY);
+    const float mag = std::sqrt(inX * inX + inY * inY);
     const float maxc = std::max(ax, ay);
 
     float f = 1.0f;
-    if (mag > 1e-4f && maxc > 0.0f) {
-        f = std::min(1.0f, maxc / mag);
-    }
+    if (mag > 1e-4f && maxc > 0.0f) f = std::min(1.0f, maxc / mag);
 
     auto* avo = a->AsActorValueOwner();
     if (!avo) return false;
 
-    if (std::fabs(diagDelta_) > 0.001f) {
-        avo->ModActorValue(RE::ActorValue::kSpeedMult, -diagDelta_);
-        diagDelta_ = 0.0f;
+    float& slot = DiagDeltaSlot(a);
+    if (std::fabs(slot) > 0.001f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -slot);
+        slot = 0.0f;
     }
 
-    if (f >= 0.999f) {
-        return false;
-    }
+    if (f >= 0.999f) return false;
 
     const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
+    const float floor = Settings::minFinalSpeedMult.load();
+    float newDiag = curSM * (f - 1.0f);
 
-    const float newDiag = curSM * (f - 1.0f);
+    if (curSM + newDiag < floor) {
+        newDiag = floor - curSM;
+    }
 
     if (std::fabs(newDiag) > 0.001f) {
         avo->ModActorValue(RE::ActorValue::kSpeedMult, newDiag);
-        diagDelta_ = newDiag;
+        slot = newDiag;
         return true;
     }
     return false;
 }
+
+bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a) {
+    if (!a) return false;
+
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) {
+        return UpdateDiagonalPenalty(a, moveX_, moveY_);
+    }
+
+    float x = 0.f, y = 0.f;
+    if (TryGetMoveAxesFromGraph(a, x, y)) {
+        return UpdateDiagonalPenalty(a, x, y);
+    }
+
+    ClearDiagDeltaFor(a);
+    return false;
+}
+
 
 float SpeedController::CaseToDelta(const RE::Actor* a) const {
     const MoveCase c = ComputeCase(a);
@@ -604,25 +640,66 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     }
 
     const float want = CaseToDelta(a);
-    float& cur = CurrentDeltaSlot(a);
-    const float diff = want - cur;
+    const bool isPlayer = (a == RE::PlayerCharacter::GetSingleton());
+    float& cur = isPlayer ? currentDelta : currentDeltaNPC_[a->formID];
+    uint64_t& t = isPlayer ? lastApplyPlayerMs_ : lastApplyNPCMs_[a->formID];
 
-    bool changed = false;
-    if (std::fabs(diff) > 0.01f) {
-        ModSpeedMult(a, diff);
-        cur = want;
-        changed = true;
+    uint64_t now = NowMs();
+    float dt = 0.0f;
+    if (t == 0) {
+        dt = 1.0f / 60.0f;
+    } else {
+        dt = std::max(0.0f, (now - t) / 1000.0f);
     }
+    t = now;
 
-    if (a == RE::PlayerCharacter::GetSingleton()) {
-        if (UpdateDiagonalPenalty(a)) {
-            changed = true;
+    bool smoothing = Settings::smoothingEnabled.load() && (isPlayer || Settings::smoothingAffectsNPCs.load());
+
+    if (smoothing && isPlayer && Settings::smoothingBypassOnStateChange.load()) {
+        const bool sprinting = IsSprintingByGraph(a);
+        const bool sneaking = a->IsSneaking();
+        const bool drawn = IsWeaponDrawnByState(a);
+
+        const bool flip =
+            (sprinting != prevPlayerSprinting_) || (sneaking != prevPlayerSneak_) || (drawn != prevPlayerDrawn_);
+        prevPlayerSprinting_ = sprinting;
+        prevPlayerSneak_ = sneaking;
+        prevPlayerDrawn_ = drawn;
+
+        if (flip) {
+            smoothing = false;
         }
     }
-    UpdateAttackSpeed(a);
 
-    if (changed) {
-        ForceSpeedRefresh(a);
+    float newDelta = want;
+    if (smoothing) {
+        newDelta = SmoothCombined(cur, want, dt);
+    }
+
+    float diff = newDelta - cur;
+
+    if (auto* avo = a->AsActorValueOwner()) {
+        const float floor = Settings::minFinalSpeedMult.load();
+        const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
+        float expected = curSM + diff;
+
+        if (expected < floor) {
+            diff = floor - curSM;
+            newDelta = cur + diff;
+        }
+    }
+
+    if (std::fabs(diff) > 0.0001f) {
+        ModSpeedMult(a, diff);
+        cur = newDelta;
+    }
+
+    const bool wantDiag = (isPlayer ? Settings::enableDiagonalSpeedFix.load() : Settings::enableDiagonalSpeedFixForNPCs.load());
+
+    if (wantDiag) {
+        UpdateDiagonalPenalty(a);
+    } else {
+        ClearDiagDeltaFor(a);
     }
 }
 
@@ -707,9 +784,55 @@ void SpeedController::RevertDeltasFor(RE::Actor* a) {
         avo->ModActorValue(RE::ActorValue::kWeaponSpeedMult, -atkDelta);
         atkDelta = 0.0f;
     }
+
+    float& diag = DiagDeltaSlot(a);
+    if (std::fabs(diag) > 0.001f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -diag);
+        diag = 0.0f;
+    }
     ForceSpeedRefresh(a);
 }
 
+bool SpeedController::TryGetMoveAxesFromGraph(const RE::Actor* a, float& outX, float& outY) const {
+    if (!a) return false;
+    float x = 0.0f, y = 0.0f;
+    bool ok = false;
+
+    if (a->GetGraphVariableFloat("MoveX", x)) ok = true;
+    if (a->GetGraphVariableFloat("MoveY", y)) ok = true;
+
+    float t = 0.0f;
+    if (!ok) {
+        if (a->GetGraphVariableFloat("SpeedSide", x)) ok = true;
+        if (a->GetGraphVariableFloat("SpeedForward", y)) ok = true;
+    }
+    if (!ok) {
+        if (a->GetGraphVariableFloat("Strafe", x)) ok = true;
+        if (a->GetGraphVariableFloat("Forward", y)) ok = true;
+    }
+
+    if (!ok) return false;
+    outX = x;
+    outY = y;
+    return (std::fabs(outX) > 1e-4f) || (std::fabs(outY) > 1e-4f);
+}
+
+float& SpeedController::DiagDeltaSlot(RE::Actor* a) {
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) return diagDelta_;
+    return diagDeltaNPC_[GetID(a)];
+}
+
+void SpeedController::ClearDiagDeltaFor(RE::Actor* a) {
+    if (!a) return;
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return;
+    float& slot = DiagDeltaSlot(a);
+    if (std::fabs(slot) > 0.001f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -slot);
+        slot = 0.0f;
+    }
+}
 
 bool SpeedController::GetJoggingMode() const { return joggingMode_; }
 void SpeedController::SetJoggingMode(bool b) { joggingMode_ = b; }

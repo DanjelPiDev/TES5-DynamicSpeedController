@@ -34,11 +34,52 @@ public:
 
 private:
     enum class MoveCase : std::uint8_t { Combat, Drawn, Sneak, Default };
+    float SmoothExpo(float prev, float target, float dtSec) const {
+        // alpha = 1 - exp(-dt / tau); tau = hl/ln2
+        const float hlSec = Settings::smoothingHalfLifeMs.load() / 1000.0f;
+        const float tau = std::max(hlSec / 0.69314718056f, 1e-4f);
+        const float a = 1.0f - std::exp(-dtSec / tau);
+        return prev + (target - prev) * std::clamp(a, 0.0f, 1.0f);
+    }
+    float SmoothRate(float prev, float target, float dtSec) const {
+        const float maxPerSec = Settings::smoothingMaxChangePerSecond.load();
+        const float maxStep = std::max(0.0f, maxPerSec) * dtSec;
+        float d = target - prev;
+        if (d > maxStep) d = maxStep;
+        if (d < -maxStep) d = -maxStep;
+        return prev + d;
+    }
+    float SmoothCombined(float prev, float target, float dtSec) const {
+        using SM = Settings::SmoothingMode;
+        switch (Settings::smoothingMode) {
+            case SM::Exponential:
+                return SmoothExpo(prev, target, dtSec);
+            case SM::RateLimit:
+                return SmoothRate(prev, target, dtSec);
+            case SM::ExpoThenRate:
+                return SmoothRate(prev, SmoothExpo(prev, target, dtSec), dtSec);
+        }
+        return target;
+    }
+
+    float smVelPlayer_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> smVelNPC_;
+
+    float wantFilteredPlayer_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> wantFilteredNPC_;
+
+    uint64_t lastApplyPlayerMs_ = 0;
+    std::unordered_map<std::uint32_t, uint64_t> lastApplyNPCMs_;
+
+    bool prevPlayerSprinting_ = false;
+    bool prevPlayerSneak_ = false;
+    bool prevPlayerDrawn_ = false;
 
     // Movement speed (To fix the diagonal speed issue of skyrim)
     float moveX_ = 0.0f;  // -1 ... +1  (left/right)
     float moveY_ = 0.0f;  // -1 ... +1  (forward/backward)
     float diagDelta_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> diagDeltaNPC_;
 
     // Deltas: Player vs. NPCs
     float currentDelta = 0.0f;
@@ -74,7 +115,6 @@ private:
     void Apply();
     void ApplyFor(RE::Actor* a);
 
-    bool UpdateDiagonalPenalty(RE::Actor* a);
     void UpdateAttackSpeed(RE::Actor* actor);
     float ComputeEquippedWeight(const RE::Actor* a) const;
     float GetPlayerScaleSafe(const RE::Actor* a) const;
@@ -92,6 +132,14 @@ private:
     static void ForceSpeedRefresh(RE::Actor* actor);
     static bool IsWeaponDrawnByState(const RE::Actor* a);
     static bool IsSprintingByGraph(const RE::Actor* a);
+
+    float& DiagDeltaSlot(RE::Actor* a);
+    void ClearDiagDeltaFor(RE::Actor* a);
+
+    bool TryGetMoveAxesFromGraph(const RE::Actor* a, float& outX, float& outY) const;
+
+    bool UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY);
+    bool UpdateDiagonalPenalty(RE::Actor* a); 
 
     static inline uint64_t NowMs() {
         using namespace std::chrono;

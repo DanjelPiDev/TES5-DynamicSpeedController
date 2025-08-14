@@ -41,6 +41,8 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kAttackSpeedEnabled"] = attackSpeedEnabled.load();
     j["kAttackOnlyWhenDrawn"] = attackOnlyWhenDrawn.load();
     j["kEnableSpeedScalingForNPCs"] = enableSpeedScalingForNPCs.load();
+    j["kEnableDiagonalSpeedFix"] = enableDiagonalSpeedFix.load();
+    j["kEnableDiagonalSpeedFixForNPCss"] = enableDiagonalSpeedFixForNPCs.load();
     j["kIgnoreBeastForms"] = ignoreBeastForms.load();
     j["kAttackBase"] = attackBase.load();
     j["kWeightPivot"] = weightPivot.load();
@@ -49,6 +51,24 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kScaleSlope"] = scaleSlope.load();
     j["kMinAttackMult"] = minAttackMult.load();
     j["kMaxAttackMult"] = maxAttackMult.load();
+    j["kSmoothingEnabled"] = smoothingEnabled.load();
+    j["kSmoothingAffectsNPCs"] = smoothingAffectsNPCs.load();
+    j["kSmoothingBypassOnStateChange"] = smoothingBypassOnStateChange.load();
+
+    switch (smoothingMode) {
+        case SmoothingMode::Exponential:
+            j["kSmoothingMode"] = "Exponential";
+            break;
+        case SmoothingMode::RateLimit:
+            j["kSmoothingMode"] = "RateLimit";
+            break;
+        case SmoothingMode::ExpoThenRate:
+            j["kSmoothingMode"] = "ExpoThenRate";
+            break;
+    }
+
+    j["kSmoothingHalfLifeMs"] = smoothingHalfLifeMs.load();
+    j["kSmoothingMaxChangePerSecond"] = smoothingMaxChangePerSecond.load();
 
     auto dumpList = [](const std::vector<FormSpec>& v) {
         nlohmann::json arr = nlohmann::json::array();
@@ -67,6 +87,7 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
 
     j["kLocationAffects"] = (locationAffects == LocationAffects::AllStates) ? "all" : "default";
     j["kLocationMode"] = (locationMode == LocationMode::Add) ? "add" : "replace";
+    j["kMinFinalSpeedMult"] = minFinalSpeedMult.load();
 
     std::ofstream out(file);
     if (!out.is_open()) return false;
@@ -156,6 +177,42 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     }
     if (j.contains("kMaxAttackMult")) {
         maxAttackMult = j["kMaxAttackMult"].get<float>();
+    }
+    if (j.contains("kEnableDiagonalSpeedFix")) {
+        enableDiagonalSpeedFix = j["kEnableDiagonalSpeedFix"].get<bool>();
+    }
+    if (j.contains("kEnableDiagonalSpeedFixForNPCs")) {
+        enableDiagonalSpeedFixForNPCs = j["kEnableDiagonalSpeedFixForNPCs"].get<bool>();
+    }
+    if (j.contains("kSmoothingEnabled")) {
+        smoothingEnabled = j["kSmoothingEnabled"].get<bool>();
+    }
+    if (j.contains("kSmoothingAffectsNPCs")) {
+        smoothingAffectsNPCs = j["kSmoothingAffectsNPCs"].get<bool>();
+    }
+    if (j.contains("kSmoothingBypassOnStateChange")) {
+        smoothingBypassOnStateChange = j["kSmoothingBypassOnStateChange"].get<bool>();
+    }
+    if (j.contains("kSmoothingHalfLifeMs")) {
+        float v = j["kSmoothingHalfLifeMs"].get<float>();
+        smoothingHalfLifeMs = std::clamp(v, 1.0f, 5000.0f);
+    }
+    if (j.contains("kSmoothingMaxChangePerSecond")) {
+        float v = j["kSmoothingMaxChangePerSecond"].get<float>();
+        smoothingMaxChangePerSecond = std::clamp(v, 1.0f, 1000.0f);
+    }
+    if (j.contains("kSmoothingMode")) {
+        std::string m = j["kSmoothingMode"].get<std::string>();
+        if (m == "Exponential")
+            smoothingMode = SmoothingMode::Exponential;
+        else if (m == "RateLimit")
+            smoothingMode = SmoothingMode::RateLimit;
+        else if (m == "ExpoThenRate")
+            smoothingMode = SmoothingMode::ExpoThenRate;
+    }
+    if (j.contains("kMinFinalSpeedMult")) {
+        float v = j["kMinFinalSpeedMult"].get<float>();
+        minFinalSpeedMult = std::clamp(v, 0.0f, 100.0f);
     }
 
     reduceInLocationType.clear();

@@ -7,8 +7,22 @@
 #include "nlohmann/json.hpp"
 
 struct Settings {
+    enum class SmoothingMode { Exponential = 0, RateLimit = 1, ExpoThenRate = 2 };
+
+    static inline std::atomic<float> minFinalSpeedMult{10.0f};
+
+    static inline std::atomic<bool> smoothingEnabled{true};
+    static inline std::atomic<bool> smoothingAffectsNPCs{true};
+    static inline std::atomic<bool> smoothingBypassOnStateChange{true};
+
+    static inline SmoothingMode smoothingMode{SmoothingMode::ExpoThenRate};
+    static inline std::atomic<float> smoothingHalfLifeMs{160.0f};
+    static inline std::atomic<float> smoothingMaxChangePerSecond{120.0f};  // max delta per Second (SpeedMult-Points)
+
     static inline std::atomic<bool> enableSpeedScalingForNPCs{false};
     inline static std::atomic<bool> ignoreBeastForms{true};
+    inline static std::atomic<bool> enableDiagonalSpeedFix{true};
+    inline static std::atomic<bool> enableDiagonalSpeedFixForNPCs{false};
 
     static inline std::atomic<float> reduceOutOfCombat{45.0f};
     static inline std::atomic<float> reduceJoggingOutOfCombat{15.0f};
