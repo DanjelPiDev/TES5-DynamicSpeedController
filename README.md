@@ -2,20 +2,27 @@
 
 > [![Download Latest Release](https://img.shields.io/github/v/release/DanjelPiDev/TES5-DynamicSpeedController)](https://github.com/DanjelPiDev/TES5-DynamicSpeedController/releases/latest)
 
-Tiny SKSE plugin that adjusts the player's SpeedMult dynamically (drawn/sneak/jog/sprint/combat) without an ESP and without MCM.
-All tuning is done via a simple JSON file.
+A small SKSE plugin that tweaks your SpeedMult and attack speed depending on what you're doing (drawn/sneak/jog/sprint/combat), now with optional NPC support and attack scaling by weapon weight & character size.
+No ESP, no MCM, just a DLL + JSON (plus SKSE menu integration).
 
 ## Features
-- Per-state speed deltas (Default, Jogging, Drawn, Sneak, Sprint)
-- Optional "no reduction while in combat"
-- Toggle between two out-of-combat modes (e.g., Walk vs. Jog) via hotkey or user event
-- Location-based modifiers, set different reductions or increases for specific locations or location types
-- No ESP, no scripts, no MCM, just a DLL + JSON
+- Different movement speed values per state (Default, Jogging, Drawn, Sneak, Sprint)
+- Optional speed scaling for NPCs
+- Attack speed scaling based on weapon weight and player size
+- Option to skip reductions in combat
+- Toggle jogging mode via hotkey or user event (Default: "Shout" key)
+- Location-based modifiers for specific locations or location types
+- Lightweight, no scripts, no save bloat
+- Fixes Skyrim’s diagonal movement speed boost
 
 ## Install
 1. Drop the DLL and *SpeedController.json* into your Data\SKSE\Plugins\ folder.
-
 2. Launch the game. The plugin auto-loads and applies settings.
+
+## How to Update
+1. Remember your SpeedController.json values (The values you are using), because the update reverts them.
+2. Drop the DLL and SpeedController.json into Data\SKSE\Plugins\
+3. Start the game, settings auto-load
 
 ## Usage
 - **Default Speed**: The plugin applies a base speed reduction when the player is out of combat with weapons sheathed.
@@ -101,8 +108,21 @@ Example for an added location:
 - kSprintEventName: Input event used to latch sprint (default "Sprint"). If you use custom control maps, set the matching event name here.
 - kReduceInLocationSpecific: LocationRules.Specific List of `Plugin|0xFormID` + value pairs for exact locations (e.g. "Skyrim.esm|0x0001A26F" : 30.0). You can also simple go into the cell, open the menu and press the button "Use Current Location".
 - kReduceInLocationType: LocationRules.Types. Same, but for location keywords (e.g. "Skyrim.esm|0x00013793" for LocTypeDungeon).
+- kIgnoreBeastForms: If true, completely disables speed & attack modifiers when the actor is in a beast form (Werewolf / Vampire Lord).
+- kEnableSpeedScalingForNPCs: If true, applies all scaling rules to NPCs as well as the player.
+- kAttackSpeedEnabled: Enables or disables attack speed scaling entirely. When false, weapon attack speed will not be modified at all.
+- kAttackOnlyWhenDrawn: If true, attack speed scaling only applies when the actor’s weapons are drawn; if sheathed, no scaling is applied.
+- kAttackBase: The base weapon speed multiplier before any weight or scale adjustments are applied (1.0 = vanilla default speed).
+- kWeightPivot: The reference weapon weight (in Skyrim units) where no weight-based speed adjustment is applied. Heavier or lighter weapons are scaled relative to this pivot.
+- kWeightSlope: The amount of attack speed change per unit of weapon weight difference from the pivot. Negative values make heavier weapons slower and lighter weapons faster, positive values do the opposite.
+- kUsePlayerScale: If true, the actor's scale (size) is factored into attack speed calculations. Larger or smaller characters will have faster/slower attacks depending on kScaleSlope.
+- kScaleSlope: The amount of attack speed change per unit of scale difference from 1.0 (normal size). Positive values make larger actors faster, negative values make them slower.
+- kMinAttackMult: The minimum allowed final attack speed multiplier after all calculations. Prevents extreme slowdowns.
+- kMaxAttackMult: The maximum allowed final attack speed multiplier after all calculations. Prevents extreme speed boosts.
 
-**Hint**: Use kToggleSpeedEvent, because the key is not always recognized by the game (e.g., when using a controller).
+**Hints**: 
+- Use kToggleSpeedEvent, because the key is not always recognized by the game (e.g., when using a controller).
+- Location rules can either replace or add to the base reductions (configurable in the SKSE Menu version).
 
 ## Notes / Compatibility
 - Works alongside movement/anim mods, values are additive via ModActorValue(SpeedMult).
