@@ -34,6 +34,47 @@ void SpeedController::Install() {
     Apply();
 }
 
+template <class T>
+static T* LookupForm(const std::string& plugin, std::uint32_t id) {
+    auto* dh = RE::TESDataHandler::GetSingleton();
+    if (!dh) return nullptr;
+    return dh->LookupForm<T>(id, plugin);
+}
+
+static RE::BGSLocation* GetPlayerLocation(const RE::PlayerCharacter* pc) {
+    if (!pc) return nullptr;
+
+    if (auto* loc = pc->GetCurrentLocation()) return loc;
+
+    if (auto* cell = pc->GetParentCell()) {
+        if (auto* loc2 = cell->GetLocation()) return loc2;
+    }
+    return nullptr;
+}
+
+static std::optional<float> ComputeLocationValue(const RE::PlayerCharacter* pc) {
+    auto* loc = GetPlayerLocation(pc);
+    if (!loc) return std::nullopt;
+
+    for (auto& fs : Settings::reduceInLocationSpecific) {
+        if (auto* l = LookupForm<RE::BGSLocation>(fs.plugin, fs.id); l && l == loc) {
+            return fs.value;
+        }
+    }
+
+    if (auto* kwSet = loc->keywords) {
+        for (auto& fs : Settings::reduceInLocationType) {
+            if (auto* kw = LookupForm<RE::BGSKeyword>(fs.plugin, fs.id); kw) {
+                if (loc->HasKeyword(kw)) {
+                    return fs.value;
+                }
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESLoadGameEvent*, RE::BSTEventSource<RE::TESLoadGameEvent>*) {
     Settings::LoadFromJson(Settings::DefaultPath());
 
@@ -127,6 +168,17 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
     return RE::BSEventNotifyControl::kContinue;
 }
 
+void SpeedController::UpdateBindingsFromSettings() {
+    toggleKeyCode_ = Settings::toggleSpeedKey.load();
+    toggleUserEvent_ = Settings::toggleSpeedEvent;
+    sprintUserEvent_ = Settings::sprintEventName;
+
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (pc) {
+        this->Apply();
+        this->ForceSpeedRefresh(pc);
+    }
+}
 
 void SpeedController::LoadToggleBindingFromJson() {
     toggleKeyCode_ = 0;
@@ -226,6 +278,18 @@ float SpeedController::CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) co
             break;
     }
 
+    if (Settings::locationAffects == Settings::LocationAffects::AllStates ||
+        (Settings::locationAffects == Settings::LocationAffects::DefaultOnly && (c == MoveCase::Default))) {
+        if (auto locVal = ComputeLocationValue(pc)) {
+            float locDelta = -(*locVal);
+            if (Settings::locationMode == Settings::LocationMode::Replace) {
+                base = locDelta;
+            } else {
+                base += locDelta;
+            }
+        }
+    }
+
     const bool sprintActiveGraph = IsSprintingByGraph(pc);
     const uint64_t now = NowMs();
     const uint64_t last = lastSprintMs_.load(std::memory_order_relaxed);
@@ -235,6 +299,13 @@ float SpeedController::CaseToDelta(MoveCase c, const RE::PlayerCharacter* pc) co
         base += Settings::increaseSprinting.load();
     }
     return base;
+}
+
+void SpeedController::RefreshNow() {
+    Apply();
+    if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+        ForceSpeedRefresh(pc);
+    }
 }
 
 void SpeedController::Apply() {
