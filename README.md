@@ -106,7 +106,7 @@ If the SKSE menu is present, open the Mod Control Panel and select **Dynamic Spe
 
 ## Screenshots
 
-<div>
+<div align="center">
 	<img src="images/20250815155713_1.jpg" alt="General Settings" width="300">
 	<img src="images/20250815155718_1.jpg" alt="Speed Settings" width="300">
 	<img src="images/20250815155720_1.jpg" alt="Attack Settings" width="300">
