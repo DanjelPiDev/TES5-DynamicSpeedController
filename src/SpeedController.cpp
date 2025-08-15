@@ -140,7 +140,7 @@ namespace {
         }
     }
     inline float PredictDiagonalPenalty(float curSM, float floor, float inX, float inY, bool sprinting) {
-        // f = max(|x|,|y|)/sqrt(x^2+y^2) (<=1), wie in UpdateDiagonalPenalty
+        // f = max(|x|,|y|)/sqrt(x^2+y^2) (<=1)
         const float ax = std::fabs(inX), ay = std::fabs(inY);
         const float mag = std::sqrt(inX * inX + inY * inY);
         const float maxc = std::max(ax, ay);
