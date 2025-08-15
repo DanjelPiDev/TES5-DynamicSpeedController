@@ -99,6 +99,39 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kSprintAnimMax"] = sprintAnimMax.load();
     j["kEventDebounceMs"] = eventDebounceMs.load();
 
+    j["kSlopeEnabled"] = slopeEnabled.load();
+    j["kSlopeAffectsNPCs"] = slopeAffectsNPCs.load();
+    j["kSlopeUphillPerDeg"] = slopeUphillPerDeg.load();
+    j["kSlopeDownhillPerDeg"] = slopeDownhillPerDeg.load();
+    j["kSlopeMaxAbs"] = slopeMaxAbs.load();
+    j["kSlopeTau"] = slopeTau.load();
+    j["kSlopeClampEnabled"] = slopeClampEnabled.load();
+    j["kSlopeMinFinal"] = slopeMinFinal.load();
+    j["kSlopeMaxFinal"] = slopeMaxFinal.load();
+    j["kSlopeMethod"] = slopeMethod.load();
+    j["kSlopeLookbackUnits"] = slopeLookbackUnits.load();
+    j["kSlopeMaxHistorySec"] = slopeMaxHistorySec.load();
+    j["kSlopeMinXYPerFrame"] = slopeMinXYPerFrame.load();
+    j["kSlopeMedianN"] = slopeMedianN.load();
+
+    j["kGroundEnabled"] = groundEnabled.load();
+    j["kGroundAffectsNPCs"] = groundAffectsNPCs.load();
+    j["kGroundTau"] = groundTau.load();
+    j["kGroundClampEnabled"] = groundClampEnabled.load();
+    j["kGroundMinFinal"] = groundMinFinal.load();
+    j["kGroundMaxFinal"] = groundMaxFinal.load();
+
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto& r : groundRules) {
+            nlohmann::json e;
+            e["name"] = r.name;
+            e["value"] = std::max(0.f, std::min(100.f, r.value));
+            arr.push_back(std::move(e));
+        }
+        j["kGroundRules"] = std::move(arr);
+    }
+
     std::ofstream out(file);
     if (!out.is_open()) return false;
     out << j.dump(4);
@@ -290,6 +323,84 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
         auto s = j["kLocationMode"].get<std::string>();
         std::transform(s.begin(), s.end(), s.begin(), ::tolower);
         locationMode = (s == "add") ? LocationMode::Add : LocationMode::Replace;
+    }
+    if (j.contains("kSlopeEnabled")) {
+        slopeEnabled = j["kSlopeEnabled"].get<bool>();
+    }
+    if (j.contains("kSlopeAffectsNPCs")) {
+        slopeAffectsNPCs = j["kSlopeAffectsNPCs"].get<bool>();
+    }
+    if (j.contains("kSlopeUphillPerDeg")) {
+        slopeUphillPerDeg = std::clamp(j["kSlopeUphillPerDeg"].get<float>(), 0.0f, 5.0f);
+    }
+    if (j.contains("kSlopeDownhillPerDeg")) {
+        slopeDownhillPerDeg = std::clamp(j["kSlopeDownhillPerDeg"].get<float>(), 0.0f, 5.0f);
+    }
+    if (j.contains("kSlopeMaxAbs")) {
+        slopeMaxAbs = std::clamp(j["kSlopeMaxAbs"].get<float>(), 0.0f, 100.0f);
+    }
+    if (j.contains("kSlopeTau")) {
+        slopeTau = std::clamp(j["kSlopeTau"].get<float>(), 0.01f, 5.0f);
+    }
+    if (j.contains("kSlopeClampEnabled")) {
+        slopeClampEnabled = j["kSlopeClampEnabled"].get<bool>();
+    }
+    if (j.contains("kSlopeMinFinal")) {
+        slopeMinFinal = j["kSlopeMinFinal"].get<float>();
+    }
+    if (j.contains("kSlopeMaxFinal")) {
+        slopeMaxFinal = j["kSlopeMaxFinal"].get<float>();
+    }
+    if (j.contains("kSlopeMethod")) {
+        int m = j["kSlopeMethod"].get<int>();
+        slopeMethod = std::clamp(m, 0, 1);
+    }
+    if (j.contains("kSlopeLookbackUnits")) {
+        float v = j["kSlopeLookbackUnits"].get<float>();
+        slopeLookbackUnits = std::max(0.0f, v);
+    }
+    if (j.contains("kSlopeMaxHistorySec")) {
+        float v = j["kSlopeMaxHistorySec"].get<float>();
+        slopeMaxHistorySec = std::max(0.01f, v);
+    }
+    if (j.contains("kSlopeMinXYPerFrame")) {
+        float v = j["kSlopeMinXYPerFrame"].get<float>();
+        slopeMinXYPerFrame = std::max(0.01f, v);
+    }
+    if (j.contains("kSlopeMedianN")) {
+        int n = j["kSlopeMedianN"].get<int>();
+        slopeMedianN = std::clamp(n, 1, 10);
+    }
+
+    if (j.contains("kGroundEnabled")) {
+        groundEnabled = j["kGroundEnabled"].get<bool>();
+    }
+    if (j.contains("kGroundAffectsNPCs")) {
+        groundAffectsNPCs = j["kGroundAffectsNPCs"].get<bool>();
+    }
+    if (j.contains("kGroundTau")) {
+        groundTau = std::clamp(j["kGroundTau"].get<float>(), 0.01f, 5.0f);
+    }
+    if (j.contains("kGroundClampEnabled")) {
+        groundClampEnabled = j["kGroundClampEnabled"].get<bool>();
+    }
+    if (j.contains("kGroundMinFinal")) {
+        groundMinFinal = j["kGroundMinFinal"].get<float>();
+    }
+    if (j.contains("kGroundMaxFinal")) {
+        groundMaxFinal = j["kGroundMaxFinal"].get<float>();
+    }
+
+    groundRules.clear();
+    if (j.contains("kGroundRules") && j["kGroundRules"].is_array()) {
+        for (auto& e : j["kGroundRules"]) {
+            if (!e.is_object()) continue;
+            if (!e.contains("name") || !e.contains("value")) continue;
+            Settings::GroundRule r;
+            r.name = e["name"].get<std::string>();
+            r.value = clampf(e["value"].get<float>(), 0.f, 100.f);
+            if (!r.name.empty()) groundRules.push_back(std::move(r));
+        }
     }
 
     return true;

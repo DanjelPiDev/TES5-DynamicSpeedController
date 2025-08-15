@@ -178,174 +178,306 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
 
     ImGui::Separator();
 
-    if (ImGui::Button("Save Settings")) {
+    FontAwesome::PushSolid();
+    if (ImGui::Button(saveIcon.c_str())) {
         Settings::SaveToJson(Settings::DefaultPath());
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
             SpeedController::GetSingleton()->RefreshNow();
         }
     }
+    FontAwesome::Pop();
 }
 
 void __stdcall UI::SpeedConfig::Render() {
-    ImGui::Text("Movement Speed Modifiers");
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(movementSpeedHeader.c_str())) {
+        float minFinalSpeedMult = Settings::minFinalSpeedMult.load();
+        if (ImGui::SliderFloat("Minimal Final SpeedMult", &minFinalSpeedMult, 0.0f, 100.0f, "%.1f")) {
+            Settings::minFinalSpeedMult.store(minFinalSpeedMult);
+        }
 
-    float minFinalSpeedMult = Settings::minFinalSpeedMult.load();
-    if (ImGui::SliderFloat("Minimal Final SpeedMult", &minFinalSpeedMult, 0.0f, 100.0f, "%.1f")) {
-        Settings::minFinalSpeedMult.store(minFinalSpeedMult);
-    }
+        float reduceOutOfCombatVal = Settings::reduceOutOfCombat.load();
+        if (ImGui::SliderFloat("Reduce Out of Combat", &reduceOutOfCombatVal, 0.0f, 100.0f, "%.1f")) {
+            Settings::reduceOutOfCombat.store(reduceOutOfCombatVal);
+        }
 
-    float reduceOutOfCombatVal = Settings::reduceOutOfCombat.load();
-    if (ImGui::SliderFloat("Reduce Out of Combat", &reduceOutOfCombatVal, 0.0f, 100.0f, "%.1f")) {
-        Settings::reduceOutOfCombat.store(reduceOutOfCombatVal);
-    }
+        float reduceJoggingVal = Settings::reduceJoggingOutOfCombat.load();
+        if (ImGui::SliderFloat("Reduce Jogging Out of Combat", &reduceJoggingVal, 0.0f, 100.0f, "%.1f")) {
+            Settings::reduceJoggingOutOfCombat.store(reduceJoggingVal);
+        }
 
-    float reduceJoggingVal = Settings::reduceJoggingOutOfCombat.load();
-    if (ImGui::SliderFloat("Reduce Jogging Out of Combat", &reduceJoggingVal, 0.0f, 100.0f, "%.1f")) {
-        Settings::reduceJoggingOutOfCombat.store(reduceJoggingVal);
-    }
+        float reduceDrawnVal = Settings::reduceDrawn.load();
+        if (ImGui::SliderFloat("Reduce Drawn", &reduceDrawnVal, 0.0f, 100.0f, "%.1f")) {
+            Settings::reduceDrawn.store(reduceDrawnVal);
+        }
 
-    float reduceDrawnVal = Settings::reduceDrawn.load();
-    if (ImGui::SliderFloat("Reduce Drawn", &reduceDrawnVal, 0.0f, 100.0f, "%.1f")) {
-        Settings::reduceDrawn.store(reduceDrawnVal);
-    }
+        float reduceSneakVal = Settings::reduceSneak.load();
+        if (ImGui::SliderFloat("Reduce Sneak", &reduceSneakVal, 0.0f, 100.0f, "%.1f")) {
+            Settings::reduceSneak.store(reduceSneakVal);
+        }
 
-    float reduceSneakVal = Settings::reduceSneak.load();
-    if (ImGui::SliderFloat("Reduce Sneak", &reduceSneakVal, 0.0f, 100.0f, "%.1f")) {
-        Settings::reduceSneak.store(reduceSneakVal);
-    }
+        float increaseSprintVal = Settings::increaseSprinting.load();
+        if (ImGui::SliderFloat("Increase Sprinting", &increaseSprintVal, 0.0f, 100.0f, "%.1f")) {
+            Settings::increaseSprinting.store(increaseSprintVal);
+        }
 
-    float increaseSprintVal = Settings::increaseSprinting.load();
-    if (ImGui::SliderFloat("Increase Sprinting", &increaseSprintVal, 0.0f, 100.0f, "%.1f")) {
-        Settings::increaseSprinting.store(increaseSprintVal);
-    }
+        bool sprintAffectsCombat = Settings::sprintAffectsCombat.load();
+        if (ImGui::Checkbox("Sprint Affects Combat", &sprintAffectsCombat)) {
+            Settings::sprintAffectsCombat.store(sprintAffectsCombat);
+        }
 
-    bool sprintAffectsCombat = Settings::sprintAffectsCombat.load();
-    if (ImGui::Checkbox("Sprint Affects Combat", &sprintAffectsCombat)) {
-        Settings::sprintAffectsCombat.store(sprintAffectsCombat);
+        bool noReductionInCombatVal = Settings::noReductionInCombat.load();
+        if (ImGui::Checkbox("No Reduction In Combat", &noReductionInCombatVal)) {
+            Settings::noReductionInCombat.store(noReductionInCombatVal);
+        }
     }
-
-    bool noReductionInCombatVal = Settings::noReductionInCombat.load();
-    if (ImGui::Checkbox("No Reduction In Combat", &noReductionInCombatVal)) {
-        Settings::noReductionInCombat.store(noReductionInCombatVal);
-    }
-
-    ImGui::Separator();
-    ImGui::Text("Animations");
-    bool syncAnim = Settings::syncSprintAnimToSpeed.load();
-    if (ImGui::Checkbox("Sync Sprint Animations to Speed", &syncAnim)) {
-        Settings::syncSprintAnimToSpeed.store(syncAnim);
-    }
-    bool onlySlowDown = Settings::onlySlowDown.load();
-    if (ImGui::Checkbox("Only Slow Down (No Speedup)", &onlySlowDown)) {
-        Settings::onlySlowDown.store(onlySlowDown);
-    }
-    float sprintAnimMin = Settings::sprintAnimMin.load();
-    if (ImGui::SliderFloat("Sprint Anim Min", &sprintAnimMin, 0.0f, 1.0f, "%.2f")) {
-        Settings::sprintAnimMin.store(sprintAnimMin);
-    }
-    float sprintAnimMax = Settings::sprintAnimMax.load();
-    if (ImGui::SliderFloat("Sprint Anim Max", &sprintAnimMax, 0.25f, 2.0f, "%.2f")) {
-        Settings::sprintAnimMax.store(sprintAnimMax);
-    }
-    ImGui::Separator();
-    ImGui::Text("Animation Smoothing");
-    bool sprintAnimOwnSmoothing = Settings::sprintAnimOwnSmoothing.load();
-    if (ImGui::Checkbox("Own Smoothing for Sprint Animations", &sprintAnimOwnSmoothing)) {
-        Settings::sprintAnimOwnSmoothing.store(sprintAnimOwnSmoothing);
-    }
-    int sprintAnimMode = Settings::sprintAnimSmoothingMode.load();
-    const char* sprintAnimModes[] = {"Exponential", "RateLimit", "ExpoThenRate"};
-    if (ImGui::Combo("Smoothing Mode", &sprintAnimMode, sprintAnimModes, IM_ARRAYSIZE(sprintAnimModes))) {
-        Settings::sprintAnimSmoothingMode.store(sprintAnimMode);
-    }
-    float sprintAnimTau = Settings::sprintAnimTau.load();
-    if (ImGui::SliderFloat("Smoothing Tau (seconds)", &sprintAnimTau, 0.01f, 1.0f, "%.2f")) {
-        Settings::sprintAnimTau.store(sprintAnimTau);
-    }
-    float sprintAnimRatePerSec = Settings::sprintAnimRatePerSec.load();
-    if (ImGui::SliderFloat("Smoothing Rate (steps/sec)", &sprintAnimRatePerSec, 0.1f, 20.0f, "%.2f")) {
-        Settings::sprintAnimRatePerSec.store(sprintAnimRatePerSec);
-    }
-
+    FontAwesome::Pop();
 
     ImGui::Separator();
-    ImGui::Text("Input / Events");
 
-    static const char* kUserEvents[] = {"Sprint",       "Sneak",     "Shout",     "Jump",     "Activate",
-                                        "Ready Weapon", "SwitchPOV"};
-    constexpr int kEventsCount = sizeof(kUserEvents) / sizeof(kUserEvents[0]);
-    constexpr int kCustomIdx = kEventsCount;
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(slopeTerrainHeader.c_str())) {
+        ImGui::Checkbox("Enable slope effect", (bool*)&Settings::slopeEnabled);
+        ImGui::Checkbox("Affect NPCs", (bool*)&Settings::slopeAffectsNPCs);
 
-    std::string sprintEvt = Settings::sprintEventName;
-    int sprintIdx = findIndex(sprintEvt, kUserEvents, kEventsCount);
-    if (sprintIdx < 0) sprintIdx = kCustomIdx;
+        ImGui::SliderFloat("Uphill per degree", (float*)&Settings::slopeUphillPerDeg, 0.0f, 5.0f, "%.2f");
+        ImGui::SliderFloat("Downhill per degree", (float*)&Settings::slopeDownhillPerDeg, 0.0f, 5.0f, "%.2f");
+        ImGui::SliderFloat("Max |slope delta|", (float*)&Settings::slopeMaxAbs, 0.0f, 100.0f, "%.1f");
+        ImGui::SliderFloat("Smoothing tau (s)", (float*)&Settings::slopeTau, 0.01f, 5.0f, "%.2f");
 
-    if (ImGui::BeginCombo("Sprint Event", sprintIdx == kCustomIdx ? sprintEvt.c_str() : kUserEvents[sprintIdx])) {
-        for (int i = 0; i < kEventsCount; ++i) {
-            bool sel = (sprintIdx == i);
-            if (ImGui::Selectable(kUserEvents[i], sel)) {
-                Settings::sprintEventName = kUserEvents[i];
+        ImGui::Separator();
+        ImGui::Checkbox("Clamp final SpeedMult while slope is active", (bool*)&Settings::slopeClampEnabled);
+        ImGui::SliderFloat("Slope Min Final", (float*)&Settings::slopeMinFinal, 0.0f, 500.0f, "%.0f");
+        ImGui::SliderFloat("Slope Max Final", (float*)&Settings::slopeMaxFinal, 0.0f, 500.0f, "%.0f");
+
+        int slopeMethod = Settings::slopeMethod.load();
+        const char* slopeMethods[] = {"Instant", "Path-based"};
+        if (ImGui::Combo("Slope Method", &slopeMethod, slopeMethods, IM_ARRAYSIZE(slopeMethods))) {
+            Settings::slopeMethod.store(slopeMethod);
+        }
+        float slopeLookbackUnits = Settings::slopeLookbackUnits.load();
+        if (ImGui::SliderFloat("Slope Lookback Units", &slopeLookbackUnits, 0.0f, 200.0f, "%.1f")) {
+            Settings::slopeLookbackUnits.store(slopeLookbackUnits);
+        }
+        float slopeMaxHistorySec = Settings::slopeMaxHistorySec.load();
+        if (ImGui::SliderFloat("Slope Max History (sec)", &slopeMaxHistorySec, 0.0f, 5.0f, "%.2f")) {
+            Settings::slopeMaxHistorySec.store(slopeMaxHistorySec);
+        }
+        float slopeMinXYPerFrame = Settings::slopeMinXYPerFrame.load();
+        if (ImGui::SliderFloat("Slope Min XY Per Frame", &slopeMinXYPerFrame, 0.01f, 5.0f, "%.2f")) {
+            Settings::slopeMinXYPerFrame.store(slopeMinXYPerFrame);
+        }
+        int slopeMedianN = Settings::slopeMedianN.load();
+        if (ImGui::SliderInt("Slope Median N", &slopeMedianN, 1, 10)) {
+            Settings::slopeMedianN.store(slopeMedianN);
+        }
+    }
+    FontAwesome::Pop();
+
+    ImGui::Separator();
+
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(groundMaterialsHeader.c_str())) {
+        bool gEnabled = Settings::groundEnabled.load();
+        if (ImGui::Checkbox("Enable ground-based speed modifiers", &gEnabled)) {
+            Settings::groundEnabled.store(gEnabled);
+        }
+        bool gNPC = Settings::groundAffectsNPCs.load();
+        if (ImGui::Checkbox("Affect NPCs", &gNPC)) {
+            Settings::groundAffectsNPCs.store(gNPC);
+        }
+
+        float gtau = Settings::groundTau.load();
+        if (ImGui::SliderFloat("Smoothing tau (sec)", &gtau, 0.01f, 1.0f, "%.2f")) {
+            Settings::groundTau.store(gtau);
+        }
+
+        ImGui::Separator();
+        bool gClamp = Settings::groundClampEnabled.load();
+        if (ImGui::Checkbox("Clamp final SpeedMult while ground is active", &gClamp)) {
+            Settings::groundClampEnabled.store(gClamp);
+        }
+        float gMin = Settings::groundMinFinal.load();
+        float gMax = Settings::groundMaxFinal.load();
+        if (ImGui::DragFloat("Ground Min Final", &gMin, 1.f, 0.f, 500.f, "%.0f")) Settings::groundMinFinal.store(gMin);
+        if (ImGui::DragFloat("Ground Max Final", &gMax, 1.f, 0.f, 500.f, "%.0f")) Settings::groundMaxFinal.store(gMax);
+
+        ImGui::Separator();
+        ImGui::Text("Rules (name match -> reduce by value)");
+
+        static char ruleName[128] = {};
+        static float ruleVal = 25.0f;
+        ImGui::InputText("Material name token (e.g. Snow, Dirt, Gravel)", ruleName, sizeof(ruleName));
+        ImGui::SliderFloat("Reduce (%)", &ruleVal, 0.f, 100.f, "%.1f");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Use Current Ground")) {
+            std::string token;
+            if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+                if (SpeedController::GetSingleton()->TryGetGroundToken(pc, token)) {
+                    std::snprintf(ruleName, sizeof(ruleName), "%s", token.c_str());
+                }
+            }
+        }
+        if (ImGui::Button("Add Rule")) {
+            Settings::GroundRule r;
+            r.name = ruleName;
+            r.value = std::max(0.f, std::min(100.f, ruleVal));
+            if (!r.name.empty()) Settings::groundRules.push_back(std::move(r));
+            ruleName[0] = '\0';
+        }
+
+        if (ImGui::BeginTable("groundRules", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable)) {
+            ImGui::TableSetupColumn("Name token");
+            ImGui::TableSetupColumn("Reduce (%)");
+            ImGui::TableSetupColumn("Remove");
+            ImGui::TableHeadersRow();
+
+            for (int i = 0; i < (int)Settings::groundRules.size(); ++i) {
+                auto& r = Settings::groundRules[i];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(r.name.c_str());
+                ImGui::TableSetColumnIndex(1);
+                float v = r.value;
+                if (ImGui::DragFloat(("##grv" + std::to_string(i)).c_str(), &v, 0.1f, 0.f, 100.f, "%.1f")) {
+                    r.value = std::max(0.f, std::min(100.f, v));
+                }
+                ImGui::TableSetColumnIndex(2);
+                if (ImGui::SmallButton(("X##gr" + std::to_string(i)).c_str())) {
+                    Settings::groundRules.erase(Settings::groundRules.begin() + i);
+                    --i;
+                }
+            }
+            ImGui::EndTable();
+        }
+    }
+    FontAwesome::Pop();
+
+    ImGui::Separator();
+
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(animationsHeader.c_str())) {
+        bool syncAnim = Settings::syncSprintAnimToSpeed.load();
+        if (ImGui::Checkbox("Sync Sprint Animations to Speed", &syncAnim)) {
+            Settings::syncSprintAnimToSpeed.store(syncAnim);
+        }
+        bool onlySlowDown = Settings::onlySlowDown.load();
+        if (ImGui::Checkbox("Only Slow Down (No Speedup)", &onlySlowDown)) {
+            Settings::onlySlowDown.store(onlySlowDown);
+        }
+        float sprintAnimMin = Settings::sprintAnimMin.load();
+        if (ImGui::SliderFloat("Sprint Anim Min", &sprintAnimMin, 0.0f, 1.0f, "%.2f")) {
+            Settings::sprintAnimMin.store(sprintAnimMin);
+        }
+        float sprintAnimMax = Settings::sprintAnimMax.load();
+        if (ImGui::SliderFloat("Sprint Anim Max", &sprintAnimMax, 0.25f, 2.0f, "%.2f")) {
+            Settings::sprintAnimMax.store(sprintAnimMax);
+        }
+        ImGui::Separator();
+        ImGui::Text("Animation Smoothing");
+        bool sprintAnimOwnSmoothing = Settings::sprintAnimOwnSmoothing.load();
+        if (ImGui::Checkbox("Own Smoothing for Sprint Animations", &sprintAnimOwnSmoothing)) {
+            Settings::sprintAnimOwnSmoothing.store(sprintAnimOwnSmoothing);
+        }
+        int sprintAnimMode = Settings::sprintAnimSmoothingMode.load();
+        const char* sprintAnimModes[] = {"Exponential", "RateLimit", "ExpoThenRate"};
+        if (ImGui::Combo("Smoothing Mode", &sprintAnimMode, sprintAnimModes, IM_ARRAYSIZE(sprintAnimModes))) {
+            Settings::sprintAnimSmoothingMode.store(sprintAnimMode);
+        }
+        float sprintAnimTau = Settings::sprintAnimTau.load();
+        if (ImGui::SliderFloat("Smoothing Tau (seconds)", &sprintAnimTau, 0.01f, 1.0f, "%.2f")) {
+            Settings::sprintAnimTau.store(sprintAnimTau);
+        }
+        float sprintAnimRatePerSec = Settings::sprintAnimRatePerSec.load();
+        if (ImGui::SliderFloat("Smoothing Rate (steps/sec)", &sprintAnimRatePerSec, 0.1f, 20.0f, "%.2f")) {
+            Settings::sprintAnimRatePerSec.store(sprintAnimRatePerSec);
+        }
+    }
+    FontAwesome::Pop();
+
+    ImGui::Separator();
+
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(inputHeader.c_str())) {
+        static const char* kUserEvents[] = {"Sprint",   "Sneak",        "Shout",    "Jump",
+                                            "Activate", "Ready Weapon", "SwitchPOV"};
+        constexpr int kEventsCount = sizeof(kUserEvents) / sizeof(kUserEvents[0]);
+        constexpr int kCustomIdx = kEventsCount;
+
+        std::string sprintEvt = Settings::sprintEventName;
+        int sprintIdx = findIndex(sprintEvt, kUserEvents, kEventsCount);
+        if (sprintIdx < 0) sprintIdx = kCustomIdx;
+
+        if (ImGui::BeginCombo("Sprint Event", sprintIdx == kCustomIdx ? sprintEvt.c_str() : kUserEvents[sprintIdx])) {
+            for (int i = 0; i < kEventsCount; ++i) {
+                bool sel = (sprintIdx == i);
+                if (ImGui::Selectable(kUserEvents[i], sel)) {
+                    Settings::sprintEventName = kUserEvents[i];
+                    SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                }
+            }
+            bool selCustom = (sprintIdx == kCustomIdx);
+            if (ImGui::Selectable("Custom...", selCustom)) {
+            }
+            ImGui::EndCombo();
+        }
+
+        static char sprintCustomBuf[64] = {};
+        if (sprintIdx == kCustomIdx) {
+            if (sprintCustomBuf[0] == '\0' && !sprintEvt.empty()) {
+                std::snprintf(sprintCustomBuf, sizeof(sprintCustomBuf), "%s", sprintEvt.c_str());
+            }
+            if (ImGui::InputText("Custom Sprint Event", sprintCustomBuf, sizeof(sprintCustomBuf))) {
+                Settings::sprintEventName = sprintCustomBuf;
                 SpeedController::GetSingleton()->UpdateBindingsFromSettings();
             }
         }
-        bool selCustom = (sprintIdx == kCustomIdx);
-        if (ImGui::Selectable("Custom...", selCustom)) {}
-        ImGui::EndCombo();
-    }
 
-    static char sprintCustomBuf[64] = {};
-    if (sprintIdx == kCustomIdx) {
-        if (sprintCustomBuf[0] == '\0' && !sprintEvt.empty()) {
-            std::snprintf(sprintCustomBuf, sizeof(sprintCustomBuf), "%s", sprintEvt.c_str());
+        std::string toggleEvt = Settings::toggleSpeedEvent;
+        int toggleIdx = findIndex(toggleEvt, kUserEvents, kEventsCount);
+        if (toggleIdx < 0) toggleIdx = kCustomIdx;
+
+        if (ImGui::BeginCombo("Toggle Event", toggleIdx == kCustomIdx ? toggleEvt.c_str() : kUserEvents[toggleIdx])) {
+            for (int i = 0; i < kEventsCount; ++i) {
+                bool sel = (toggleIdx == i);
+                if (ImGui::Selectable(kUserEvents[i], sel)) {
+                    Settings::toggleSpeedEvent = kUserEvents[i];
+                    SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                }
+            }
+            bool selCustom = (toggleIdx == kCustomIdx);
+            if (ImGui::Selectable("Custom...", selCustom)) {
+            }
+            ImGui::EndCombo();
         }
-        if (ImGui::InputText("Custom Sprint Event", sprintCustomBuf, sizeof(sprintCustomBuf))) {
-            Settings::sprintEventName = sprintCustomBuf;
-            SpeedController::GetSingleton()->UpdateBindingsFromSettings();
-        }
-    }
 
-    std::string toggleEvt = Settings::toggleSpeedEvent;
-    int toggleIdx = findIndex(toggleEvt, kUserEvents, kEventsCount);
-    if (toggleIdx < 0) toggleIdx = kCustomIdx;
-
-    if (ImGui::BeginCombo("Toggle Event", toggleIdx == kCustomIdx ? toggleEvt.c_str() : kUserEvents[toggleIdx])) {
-        for (int i = 0; i < kEventsCount; ++i) {
-            bool sel = (toggleIdx == i);
-            if (ImGui::Selectable(kUserEvents[i], sel)) {
-                Settings::toggleSpeedEvent = kUserEvents[i];
+        static char toggleCustomBuf[64] = {};
+        if (toggleIdx == kCustomIdx) {
+            if (toggleCustomBuf[0] == '\0' && !toggleEvt.empty()) {
+                std::snprintf(toggleCustomBuf, sizeof(toggleCustomBuf), "%s", toggleEvt.c_str());
+            }
+            if (ImGui::InputText("Custom Toggle Event", toggleCustomBuf, sizeof(toggleCustomBuf))) {
+                Settings::toggleSpeedEvent = toggleCustomBuf;
                 SpeedController::GetSingleton()->UpdateBindingsFromSettings();
             }
         }
-        bool selCustom = (toggleIdx == kCustomIdx);
-        if (ImGui::Selectable("Custom...", selCustom)) {
-        }
-        ImGui::EndCombo();
-    }
 
-    static char toggleCustomBuf[64] = {};
-    if (toggleIdx == kCustomIdx) {
-        if (toggleCustomBuf[0] == '\0' && !toggleEvt.empty()) {
-            std::snprintf(toggleCustomBuf, sizeof(toggleCustomBuf), "%s", toggleEvt.c_str());
-        }
-        if (ImGui::InputText("Custom Toggle Event", toggleCustomBuf, sizeof(toggleCustomBuf))) {
-            Settings::toggleSpeedEvent = toggleCustomBuf;
+        int sc = Settings::toggleSpeedKey.load();
+        if (ImGui::InputInt("Toggle Key (scancode)", &sc)) {
+            Settings::toggleSpeedKey.store(sc);
             SpeedController::GetSingleton()->UpdateBindingsFromSettings();
         }
     }
+    FontAwesome::Pop();
 
-    int sc = Settings::toggleSpeedKey.load();
-    if (ImGui::InputInt("Toggle Key (scancode)", &sc)) {
-        Settings::toggleSpeedKey.store(sc);
-        SpeedController::GetSingleton()->UpdateBindingsFromSettings();
-    }
-
-
-    if (ImGui::Button("Save Settings")) {
+    FontAwesome::PushSolid();
+    if (ImGui::Button(saveIcon.c_str())) {
         Settings::SaveToJson(Settings::DefaultPath());
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
             SpeedController::GetSingleton()->RefreshNow();
         }
     }
+    FontAwesome::Pop();
 }
 
 void __stdcall UI::SpeedConfig::RenderAttack() {
@@ -398,12 +530,14 @@ void __stdcall UI::SpeedConfig::RenderAttack() {
         Settings::maxAttackMult.store(maxMul);
     }
 
-    if (ImGui::Button("Save Settings")) {
+    FontAwesome::PushSolid();
+    if (ImGui::Button(saveIcon.c_str())) {
         Settings::SaveToJson(Settings::DefaultPath());
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
             SpeedController::GetSingleton()->RefreshNow();
         }
     }
+    FontAwesome::Pop();
 }
 
 
@@ -434,7 +568,8 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
     ImGui::Spacing();
 
     // Specific Locations (BGSLocation)
-    if (ImGui::CollapsingHeader("Specific Locations (BGSLocation)", ImGuiTreeNodeFlags_DefaultOpen)) {
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(specificLocationHeader.c_str())) {
         static char specBuf[256] = {};
         static float specVal = 30.0f;
 
@@ -482,11 +617,13 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
             ImGui::EndTable();
         }
     }
+    FontAwesome::Pop();
 
     ImGui::Spacing();
 
+    FontAwesome::PushSolid();
     // Location Types (BGSKeyword)
-    if (ImGui::CollapsingHeader("Location Types (BGSKeyword e.g. LocType*)", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(typesLocationHeader.c_str())) {
         static char typeBuf[256] = {};
         static float typeVal = 45.0f;
         static std::vector<std::pair<std::string, std::string>> s_curLocKw;
@@ -562,12 +699,15 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
             ImGui::EndTable();
         }
     }
+    FontAwesome::Pop();
 
     ImGui::Separator();
-    if (ImGui::Button("Save Location Rules")) {
+    FontAwesome::PushSolid();
+    if (ImGui::Button(saveIcon.c_str())) {
         Settings::SaveToJson(Settings::DefaultPath());
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
             SpeedController::GetSingleton()->RefreshNow();
         }
     }
+    FontAwesome::Pop();
 }

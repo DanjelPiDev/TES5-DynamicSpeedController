@@ -4,6 +4,12 @@
 #include <thread>
 #include "Settings.h"
 
+struct PathSample {
+    float x, y, z;
+    float sxy;     // kumulierte XY-Strecke
+    uint64_t tMs;  // Zeitstempel
+};
+
 class SpeedController : public RE::BSTEventSink<RE::TESCombatEvent>,
                         public RE::BSTEventSink<RE::TESLoadGameEvent>,
                         public RE::BSTEventSink<RE::BSAnimationGraphEvent>,
@@ -43,6 +49,15 @@ public:
         savedBaselineSM_ = baseSM;
         snapshotLoaded_.store(true, std::memory_order_relaxed);
     }
+
+    std::deque<PathSample> pathPlayer_;
+    std::unordered_map<std::uint32_t, std::deque<PathSample>> pathNPC_;
+
+    std::deque<PathSample>& PathBuf(RE::Actor* a);
+    void ClearPathFor(RE::Actor* a);
+    void PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint64_t nowMs);
+    bool ComputePathSlopeDeg(RE::Actor* a, float lookbackUnits, float maxAgeSec, float& outDeg);
+    bool TryGetGroundToken(const RE::Actor* a, std::string& outToken) const;
 
 private:
     enum class MoveCase : std::uint8_t { Combat, Drawn, Sneak, Default };
@@ -95,6 +110,9 @@ private:
     uint64_t lastApplyPlayerMs_ = 0;
     std::unordered_map<std::uint32_t, uint64_t> lastApplyNPCMs_;
 
+    uint64_t lastSlopePlayerMs_ = 0;
+    std::unordered_map<uint32_t, uint64_t> lastSlopeNPCMs_;
+
     bool prevPlayerSprinting_ = false;
     bool prevPlayerSneak_ = false;
     bool prevPlayerDrawn_ = false;
@@ -127,6 +145,26 @@ private:
 
     std::chrono::steady_clock::time_point lastToggle_{};
     std::chrono::milliseconds toggleCooldown_{150};
+
+    float slopeDeltaPlayer_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> slopeDeltaNPC_;
+
+    RE::NiPoint3 lastPosPlayer_{};
+    std::unordered_map<std::uint32_t, RE::NiPoint3> lastPosNPC_;
+
+    // Ground delta-Slots (analog to slope/diag)
+    float groundDeltaPlayer_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> groundDeltaNPC_;
+
+    float& GroundDeltaSlot(RE::Actor* a);
+    void ClearGroundDeltaFor(RE::Actor* a);
+    bool UpdateGroundPenalty(RE::Actor* a, float dt);
+    static float GroundReduceForToken(std::string_view token);
+
+    float& SlopeDeltaSlot(RE::Actor* a);
+    void ClearSlopeDeltaFor(RE::Actor* a);
+    bool UpdateSlopePenalty(RE::Actor* a, float dt);
+    void UpdateSlopeTickOnly();
 
     void UpdateSprintAnimRate(RE::Actor* a);
 

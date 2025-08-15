@@ -205,6 +205,81 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESEquipEvent* 
     return RE::BSEventNotifyControl::kContinue;
 }
 
+float& SpeedController::SlopeDeltaSlot(RE::Actor* a) {
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) return slopeDeltaPlayer_;
+    return slopeDeltaNPC_[a->GetFormID()];
+}
+
+void SpeedController::ClearSlopeDeltaFor(RE::Actor* a) {
+    float& slot = SlopeDeltaSlot(a);
+    if (std::fabs(slot) > 1e-4f) {
+        if (auto* avo = a->AsActorValueOwner()) {
+            avo->ModActorValue(RE::ActorValue::kSpeedMult, -slot);
+        }
+        slot = 0.0f;
+    }
+    ClearPathFor(a);
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) {
+        lastSlopePlayerMs_ = 0;
+    } else {
+        lastSlopeNPCMs_.erase(a->GetFormID());
+    }
+}
+
+
+bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
+    if (!a || dt <= 0.f) return false;
+    if (!Settings::slopeEnabled.load()) return false;
+    if (a != RE::PlayerCharacter::GetSingleton() && !Settings::slopeAffectsNPCs.load()) return false;
+
+    const uint64_t nowMs = NowMs();
+    const auto pos = a->GetPosition();
+
+    // Pfad aktualisieren
+    PushPathSample(a, pos, nowMs);
+
+    float slopeDeg = 0.0f;
+    bool haveSlope = false;
+
+    if (Settings::slopeMethod.load() == 1) {
+        // Weg-basierte Steigung
+        haveSlope =
+            ComputePathSlopeDeg(a, Settings::slopeLookbackUnits.load(), Settings::slopeMaxHistorySec.load(), slopeDeg);
+    } else {
+        // Fallback: Instant (dein alter Ansatz)
+        // -> optional: du kannst hier lastPosPlayer_/NPC_ weiterverwenden,
+        //    aber mit Pfad brauchst du die alten lastPos* nicht mehr.
+        haveSlope = false;
+    }
+
+    float want = 0.0f;
+    if (haveSlope) {
+        if (slopeDeg > 0.0f) {
+            want -= Settings::slopeUphillPerDeg.load() * slopeDeg;
+        } else if (slopeDeg < 0.0f) {
+            want += Settings::slopeDownhillPerDeg.load() * (-slopeDeg);
+        }
+        const float absMax = Settings::slopeMaxAbs.load();
+        want = std::clamp(want, -absMax, absMax);
+    }
+
+    // Exponential Smoothing (behältst du, aber du kannst 'tau' für snappigere Treppen auf 0.12–0.2 senken)
+    float& slot = SlopeDeltaSlot(a);
+    const float tau = std::max(0.01f, Settings::slopeTau.load());
+    const float alpha = 1.0f - std::exp(-dt / tau);
+    const float newDelta = slot + alpha * (want - slot);
+
+    if (std::fabs(newDelta - slot) > 1e-4f) {
+        if (auto* avo = a->AsActorValueOwner()) {
+            avo->ModActorValue(RE::ActorValue::kSpeedMult, newDelta - slot);
+            slot = newDelta;
+            return true;
+        }
+    }
+    return false;
+}
 
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESLoadGameEvent*, RE::BSTEventSource<RE::TESLoadGameEvent>*) {
@@ -565,9 +640,12 @@ void SpeedController::RevertAllNPCDeltas() {
             }
         }
 
+        ClearSlopeDeltaFor(a);
         ForceSpeedRefresh(a);
     }
 
+    slopeDeltaNPC_.clear();
+    lastPosNPC_.clear();
     currentDeltaNPC_.clear();
     attackDeltaNPC_.clear();
     diagDeltaNPC_.clear();
@@ -632,6 +710,7 @@ void SpeedController::DoPostLoadCleanup() {
                 const float snapDiag = diagDelta_;
                 const bool snapJog = joggingMode_;
 
+                ClearSlopeDeltaFor(pc);
                 RevertDeltasFor(pc);
 
                 float base = savedBaselineSM_;
@@ -655,6 +734,7 @@ void SpeedController::DoPostLoadCleanup() {
                 joggingMode_ = snapJog;
 
                 snapshotLoaded_.store(false, std::memory_order_relaxed);
+                
                 ForceSpeedRefresh(pc);
             } else {
                 RevertDeltasFor(pc);
@@ -821,7 +901,10 @@ void SpeedController::Apply() {
         static uint64_t lastApplyMainMs = 0;
         const uint64_t now = NowMs();
         const int gap = std::max(0, Settings::eventDebounceMs.load());
-        if (gap > 0 && lastApplyMainMs != 0 && (now - lastApplyMainMs) < static_cast<uint64_t>(gap)) {
+        const bool throttled = (gap > 0 && lastApplyMainMs != 0 && (now - lastApplyMainMs) < (uint64_t)gap);
+
+        if (throttled) {
+            UpdateSlopeTickOnly();
             return;
         }
         lastApplyMainMs = now;
@@ -902,9 +985,10 @@ void SpeedController::ApplyFor(RE::Actor* a) {
 
         float& curSlot = isPlayer ? currentDelta : currentDeltaNPC_[a->formID];
         float& diagSlot = DiagDeltaSlot(a);
+        float& slopeSlot = SlopeDeltaSlot(a);
 
         const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
-        const float baseNoUs = curSM - curSlot - diagSlot;
+        const float baseNoUs = curSM - curSlot - diagSlot - slopeSlot;
 
         bool wantDiag =
             isPlayer ? Settings::enableDiagonalSpeedFix.load() : Settings::enableDiagonalSpeedFixForNPCs.load();
@@ -922,7 +1006,19 @@ void SpeedController::ApplyFor(RE::Actor* a) {
             predictedDiag = PredictDiagonalPenalty(baseNoUs + newDelta, floor, x, y, sprinting);
         }
 
-        float expectedFinal = baseNoUs + newDelta + predictedDiag;
+        float expectedFinal = baseNoUs + newDelta + predictedDiag + slopeSlot;
+
+        if (Settings::slopeClampEnabled.load()) {
+            const float lo = Settings::slopeMinFinal.load();
+            const float hi = Settings::slopeMaxFinal.load();
+            if (expectedFinal < lo) {
+                newDelta += (lo - expectedFinal);
+                expectedFinal = lo;
+            } else if (expectedFinal > hi) {
+                newDelta -= (expectedFinal - hi);
+                expectedFinal = hi;
+            }
+        }
 
         if (expectedFinal < floor) {
             const float needed = floor - expectedFinal;
@@ -944,6 +1040,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     } else {
         ClearDiagDeltaFor(a);
     }
+    UpdateSlopePenalty(a, dt);
     ClampSpeedFloor(a);
 }
 
@@ -1039,6 +1136,38 @@ bool SpeedController::IsInBeastForm(const RE::Actor* a) {
     return false;
 }
 
+void SpeedController::UpdateSlopeTickOnly() {
+    // Player
+    if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+        const uint64_t now = NowMs();
+        float dt = (lastSlopePlayerMs_ == 0) ? (1.0f / 60.0f) : std::max(0.0f, (now - lastSlopePlayerMs_) / 1000.0f);
+        lastSlopePlayerMs_ = now;
+
+        UpdateSlopePenalty(pc, dt);
+        ClampSpeedFloor(pc);
+    }
+
+    // NPCs, wenn aktiv
+    if (Settings::enableSpeedScalingForNPCs.load()) {
+        auto* pl = RE::ProcessLists::GetSingleton();
+        if (pl) {
+            for (auto& h : pl->highActorHandles) {
+                RE::Actor* a = h.get().get();
+                if (!a) continue;
+                const auto id = GetID(a);
+
+                const uint64_t now = NowMs();
+                uint64_t& t = lastSlopeNPCMs_[id];
+                float dt = (t == 0) ? (1.0f / 60.0f) : std::max(0.0f, (now - t) / 1000.0f);
+                t = now;
+
+                UpdateSlopePenalty(a, dt);
+                ClampSpeedFloor(a);
+            }
+        }
+    }
+}
+
 void SpeedController::RevertDeltasFor(RE::Actor* a) {
     if (!a) return;
     auto* avo = a->AsActorValueOwner();
@@ -1061,6 +1190,7 @@ void SpeedController::RevertDeltasFor(RE::Actor* a) {
         avo->ModActorValue(RE::ActorValue::kSpeedMult, -diag);
         diag = 0.0f;
     }
+    ClearSlopeDeltaFor(a);
     ForceSpeedRefresh(a);
 }
 
@@ -1104,6 +1234,66 @@ void SpeedController::ClearDiagDeltaFor(RE::Actor* a) {
         slot = 0.0f;
     }
 }
+
+std::deque<PathSample>& SpeedController::PathBuf(RE::Actor* a) {
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) return pathPlayer_;
+    return pathNPC_[a->GetFormID()];
+}
+
+void SpeedController::ClearPathFor(RE::Actor* a) {
+    auto& q = PathBuf(a);
+    q.clear();
+}
+
+void SpeedController::PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint64_t nowMs) {
+    auto& q = PathBuf(a);
+    float sxy = 0.0f;
+    if (!q.empty()) {
+        const auto& last = q.back();
+        const float dx = pos.x - last.x;
+        const float dy = pos.y - last.y;
+        const float dxy = std::sqrt(dx * dx + dy * dy);
+        // Mini-Filter: sehr kleine Schritte ignorieren, damit keine „zitternden“ In-Place-Messungen entstehen
+        if (dxy < Settings::slopeMinXYPerFrame.load()) {
+            // trotzdem eine Zeitschranke pflegen, damit wir purgen können
+            sxy = last.sxy;
+        } else {
+            sxy = last.sxy + dxy;
+        }
+    }
+    q.push_back(PathSample{pos.x, pos.y, pos.z, sxy, nowMs});
+
+    // Alte Samples rausschmeißen (Zeitfenster)
+    const uint64_t maxAgeMs = static_cast<uint64_t>(std::max(0.f, Settings::slopeMaxHistorySec.load()) * 1000.f);
+    while (!q.empty() && (nowMs - q.front().tMs) > maxAgeMs) {
+        q.pop_front();
+    }
+}
+
+bool SpeedController::ComputePathSlopeDeg(RE::Actor* a, float lookbackUnits, float maxAgeSec, float& outDeg) {
+    auto& q = PathBuf(a);
+    if (q.size() < 2) return false;
+
+    const auto& cur = q.back();
+    const float wantSxy = std::max(0.f, cur.sxy - std::max(lookbackUnits, 0.0f));
+
+    // Finde Sample, das mindestens lookbackUnits hinter uns liegt
+    const PathSample* ref = nullptr;
+    for (int i = static_cast<int>(q.size()) - 1; i >= 0; --i) {
+        if (q[static_cast<size_t>(i)].sxy <= wantSxy) {
+            ref = &q[static_cast<size_t>(i)];
+            break;
+        }
+    }
+    if (!ref) ref = &q.front();  // notfalls ältestes
+
+    const float dxy = std::max(1e-3f, cur.sxy - ref->sxy);
+    const float dz = cur.z - ref->z;
+    outDeg = std::clamp(std::atan2(dz, dxy) * 57.29578f, -85.0f, 85.0f);
+    return true;
+}
+
 
 bool SpeedController::GetJoggingMode() const { return joggingMode_; }
 void SpeedController::SetJoggingMode(bool b) { joggingMode_ = b; }

@@ -48,5 +48,19 @@
   "kArmorMaxSpeedMult": 110.0,
   "kArmorAffectsAttackSpeed": false,
   "kArmorLightBonus": 0.0,
-  "kArmorHeavyPenalty": 0.0
+  "kArmorHeavyPenalty": 0.0,
+  "kSlopeEnabled": true,
+  "kSlopeAffectsNPCs": true,
+  "kSlopeUphillPerDeg": 0.60,
+  "kSlopeDownhillPerDeg": 0.30,
+  "kSlopeMaxAbs": 25.0,
+  "kSlopeTau": 0.25,
+  "kSlopeClampEnabled": false,
+  "kSlopeMinFinal": 60.0,
+  "kSlopeMaxFinal": 200.0,
+  "kSlopeMethod": 1,
+  "kSlopeLookbackUnits": 96.0,
+  "kSlopeMaxHistorySec": 1.0,
+  "kSlopeMinXYPerFrame": 0.25,
+  "kSlopeMedianN": 3
 }
