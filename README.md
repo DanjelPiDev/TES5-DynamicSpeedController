@@ -2,36 +2,126 @@
 
 > [![Download Latest Release](https://img.shields.io/github/v/release/DanjelPiDev/TES5-DynamicSpeedController)](https://github.com/DanjelPiDev/TES5-DynamicSpeedController/releases/latest)
 
-A small SKSE plugin that tweaks your SpeedMult and attack speed depending on what you're doing (drawn/sneak/jog/sprint/combat), now with optional NPC support and attack scaling by weapon weight & character size.
-No ESP, no MCM, just a DLL + JSON (plus SKSE menu integration).
+A lightweight SKSE plugin that adjusts your **SpeedMult** and **attack speed** based on your current state (drawn, sneak, jog, sprint, combat). It includes optional NPC support, weapon-weight and actor-size based attack scaling, a diagonal movement fix, sprint animation sync, and smooth acceleration options.  
+No ESP and no scripts in your save; it is just a DLL with a JSON config. Optional in-game configuration via an SKSE menu.
+
+> Tested on current AE on my setup. For the cleanest experience, save in the pause menu before changing settings.
+
+---
+
+## Table of Contents
+
+- [Why](#why)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Updating](#updating)
+- [In-Game Configuration](#in-game-configuration)
+- [Screenshots](#screenshots)
+- [JSON Configuration](#json-configuration)
+  - [Key Explanations](#key-explanations)
+- [Tips](#tips)
+- [Troubleshooting](#troubleshooting)
+- [Uninstall](#uninstall)
+- [Build From Source](#build-from-source)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Credits](#credits)
+- [License](#license)
+
+---
+
+## Why
+
+Skyrim combines forward and sideways input in a way that makes diagonal movement faster than intended. This plugin reads the movement axes from the animation graph and applies a minimal, state-aware correction that preserves your configured minimum speed. The correction can be lighter while sprinting and can be enabled for NPCs.
+
+---
 
 ## Features
-- Different movement speed values per state (Default, Jogging, Drawn, Sneak, Sprint)
-- Optional speed scaling for NPCs
-- Attack speed scaling based on weapon weight and player size
-- Option to skip reductions in combat
-- Toggle jogging mode via hotkey or user event (Default: "Shout" key)
-- Location-based modifiers for specific locations or location types
-- Lightweight, no scripts, no save bloat
-- Fixes Skyrim’s diagonal movement speed boost
 
-## Install
-1. Drop the DLL and *SpeedController.json* into your Data\SKSE\Plugins\ folder.
-2. Launch the game. The plugin auto-loads and applies settings.
+- **Per-state movement tuning** for Default, Jogging, Drawn, Sneak, and Sprint. You can decide that combat keeps full speed.
+- **Optional NPC support** for movement, diagonal fix, smoothing, and attack scaling.
+- **Attack speed scaling** by weapon weight and actor size with base multiplier, pivot, slope, and clamps; optionally only when drawn.
+- **Diagonal speed fix** that respects your minimum SpeedMult and can apply to NPCs.
+- **Smooth acceleration** with Expo, Rate Limit, or Expo-then-Rate, plus a bypass on major state changes.
+- **Sprint animation sync** that matches animation rate to your current SpeedMult with its own smoothing and clamps.
+- **Jogging toggle** via hotkey or user event name (defaults: Toggle = `Shout`, Sprint latch = `Sprint`).
+- **Location rules** for specific locations or location types, with replace or add behavior and a choice to affect default only or all states.
+- **Safety floor** so SpeedMult never drops below your minimum.
+- **Beast form awareness** to ignore modifiers in Werewolf or Vampire Lord forms if desired.
+- **Lightweight and script-free**; no Papyrus, no save bloat.
 
-## How to Update
-1. Remember your SpeedController.json values (The values you are using), because the update reverts them.
-2. Drop the DLL and SpeedController.json into Data\SKSE\Plugins\
-3. Start the game, settings auto-load
+---
 
-## Usage
-- **Default Speed**: The plugin applies a base speed reduction when the player is out of combat with weapons sheathed.
-- **Jogging Mode**: Press the toggle key or trigger the user event to switch to jogging mode, which applies a different speed reduction.
-- **Drawn Weapons**: When the player draws a weapon, the plugin applies a speed reduction (This is useful for combat scenarios, it is coupled, so if you don't draw a weapon in combat, you will not get the speed boost/reduction).
-- **Sneaking**: When the player is sneaking, a different speed reduction is applied.
+## Requirements
 
-### Configuration
-Open *(Data/SKSE/Plugins/SpeedController.json)*
+- **SKSE** for Skyrim SE/AE
+- **Optional:** SKSE Menu Framework (for the in-game menu pages: General, Speed, Attack, Location Rules)
+
+---
+
+## Installation
+
+1. Drop the DLL and `SpeedController.json` into `Data\SKSE\Plugins\`.
+2. Start the game; settings are auto-loaded.
+
+---
+
+## Updating
+
+1. Back up your current `SpeedController.json` if you want to keep your values.
+2. Replace the DLL and `SpeedController.json` in `Data\SKSE\Plugins\`.
+3. Start the game; settings auto-load. The plugin restores a safe baseline after load.
+
+---
+
+## In-Game Configuration
+
+If the SKSE menu is present, open the Mod Control Panel and select **Dynamic Speed Controller**. Pages:
+
+**General**
+- Toggle NPC scaling, beast-form ignore, diagonal fix (player and NPCs).
+- Event debounce settings.
+- Smoothing enable, mode, half-life, max change per second, and bypass on major state changes.
+- Save settings to JSON.
+
+**Speed**
+- Reductions for Default, Jogging, Drawn, Sneak, and an extra increase for Sprint.
+- Option for sprint bonus to also apply during combat.
+- Minimum final SpeedMult clamp.
+- Sprint animation sync to movement speed with dedicated smoothing and clamps.
+- Bind a toggle user event or a scancode; set the sprint event name.
+
+**Attack**
+- Enable attack speed scaling and optionally restrict it to when weapons are drawn.
+- Base multiplier, weight pivot and slope.
+- Optional actor scale with own slope.
+- Min and max clamps. Updates on equip.
+
+**Location Rules**
+- Choose whether rules affect Default only or all states.
+- Replace or Add behavior.
+- Add specific locations by `Plugin|0xFormID`, or press **Use Current Location**.
+- Add location types by keyword (e.g., `LocTypeCity`).
+- Inline edit, remove entries, and save the list.
+
+---
+
+## Screenshots
+
+<div>
+	<img src="images/20250815155713_1.jpg" alt="General Settings" width="300">
+	<img src="images/20250815155718_1.jpg" alt="Speed Settings" width="300">
+	<img src="images/20250815155720_1.jpg" alt="Attack Settings" width="300">
+	<img src="images/20250815155723_1.jpg" alt="Location Rules" width="300">
+	<img src="images/20250815155726_1.jpg" alt="Location Rules - Add Location" width="300">
+</div>>
+
+---
+
+## JSON Configuration
+
+Everything lives in `Data/SKSE/Plugins/SpeedController.json`. The in-game menu reads and writes the same file.
 
 ```json
 {
@@ -41,98 +131,123 @@ Open *(Data/SKSE/Plugins/SpeedController.json)*
   "kReduceSneak": 20.0,
   "kIncreaseSprinting": 25.0,
   "kNoReductionInCombat": true,
+
   "kToggleSpeedKey": 269,
   "kToggleSpeedEvent": "Shout",
   "kSprintEventName": "Sprint",
-  "kReduceInLocationSpecific": [],
-  "kReduceInLocationType": [],
+
+  "kEnableSpeedScalingForNPCs": false,
+  "kEnableDiagonalSpeedFix": true,
+  "kEnableDiagonalSpeedFixForNPCs": false,
+  "kIgnoreBeastForms": true,
+
+  "kSmoothingEnabled": true,
+  "kSmoothingAffectsNPCs": true,
+  "kSmoothingBypassOnStateChange": true,
+  "kSmoothingMode": "ExpoThenRate",
+  "kSmoothingHalfLifeMs": 160.0,
+  "kSmoothingMaxChangePerSecond": 120.0,
+
+  "kMinFinalSpeedMult": 10.0,
+  "kEventDebounceMs": 10,
+
+  "kSyncSprintAnimToSpeed": true,
+  "kOnlySlowDown": true,
+  "kSprintAnimMin": 0.50,
+  "kSprintAnimMax": 1.25,
+  "kSprintAnimOwnSmoothing": true,
+  "kSprintAnimMode": 2,
+  "kSprintAnimTau": 0.10,
+  "kSprintAnimRatePerSec": 5.0,
+  "kSprintAffectsCombat": false,
+
   "kAttackSpeedEnabled": true,
   "kAttackOnlyWhenDrawn": true,
-  "kAttackBase": 1.00,
+  "kAttackBase": 1.0,
   "kWeightPivot": 10.0,
   "kWeightSlope": -0.03,
   "kUsePlayerScale": false,
   "kScaleSlope": 0.25,
   "kMinAttackMult": 0.60,
   "kMaxAttackMult": 1.80,
-  "kEnableSpeedScalingForNPCs": false,
-  "kIgnoreBeastForms": true
+
+  "kReduceInLocationSpecific": [],
+  "kReduceInLocationType": [],
+  "kLocationAffects": "default",
+  "kLocationMode": "replace"
 }
 ```
 
-Example for an added location:
-```json
-{
-	"kIncreaseSprinting": 25.0,
-	"kLocationAffects": "default",
-	"kLocationMode": "replace",
-	"kNoReductionInCombat": true,
-	"kReduceDrawn": 15.0,
-	"kReduceInLocationSpecific": [
-		{
-			"form": "cceejsse001-hstead.esm|0x000F1E",
-			"value": 58.0
-		}
-	],
-	"kReduceInLocationType": [],
-	"kReduceJoggingOutOfCombat": 25.0,
-	"kReduceOutOfCombat": 45.0,
-	"kReduceSneak": 61.0,
-	"kSprintEventName": "Sprint",
-	"kToggleSpeedEvent": "Shout",
-	"kToggleSpeedKey": 269,
-	"kAttackSpeedEnabled": true,
-	"kAttackOnlyWhenDrawn": true,
-	"kAttackBase": 1.00,
-	"kWeightPivot": 10.0,
-	"kWeightSlope": -0.03,
-	"kUsePlayerScale": false,
-	"kScaleSlope": 0.25,
-	"kMinAttackMult": 0.60,
-	"kMaxAttackMult": 1.80,
-	"kEnableSpeedScalingForNPCs": false,
-	"kIgnoreBeastForms": true
-}
-```
+### Key Explanations
+- kReduceOutOfCombat, kReduceJoggingOutOfCombat, kReduceDrawn, kReduceSneak
+Reductions per state. Jogging is a toggle variant of Default.
 
+- kIncreaseSprinting
+  - Extra increase while sprinting. If kSprintAffectsCombat is true, this bonus also applies in combat.
 
-#### What the settings do
-- kReduceOutOfCombat: Base reduction when out of combat (weapon sheathed).
-- kReduceJoggingOutOfCombat: Alternate out-of-combat reduction when you toggle "jogging mode."
-- kReduceDrawn: Reduction while weapons are drawn.
-- kReduceSneak: Reduction while sneaking.
-- kIncreaseSprinting: Extra increase applied while sprinting.
-- kNoReductionInCombat: If true, disables reductions during combat (useful for responsiveness).
-- kToggleSpeedKey: Keyboard scancode for toggling jogging mode (e.g., 269 = dpadright (https://www.nexusmods.com/skyrimspecialedition/articles/7704%5D) / depends on layout). Set 0 to disable (Or better, don't use it :D).
-- kToggleSpeedEvent: Game user event name that also toggles jogging mode (default "Shout"). Set "" to disable.
-- kSprintEventName: Input event used to latch sprint (default "Sprint"). If you use custom control maps, set the matching event name here.
-- kReduceInLocationSpecific: LocationRules.Specific List of `Plugin|0xFormID` + value pairs for exact locations (e.g. "Skyrim.esm|0x0001A26F" : 30.0). You can also simple go into the cell, open the menu and press the button "Use Current Location".
-- kReduceInLocationType: LocationRules.Types. Same, but for location keywords (e.g. "Skyrim.esm|0x00013793" for LocTypeDungeon).
-- kIgnoreBeastForms: If true, completely disables speed & attack modifiers when the actor is in a beast form (Werewolf / Vampire Lord).
-- kEnableSpeedScalingForNPCs: If true, applies all scaling rules to NPCs as well as the player.
-- kAttackSpeedEnabled: Enables or disables attack speed scaling entirely. When false, weapon attack speed will not be modified at all.
-- kAttackOnlyWhenDrawn: If true, attack speed scaling only applies when the actor’s weapons are drawn; if sheathed, no scaling is applied.
-- kAttackBase: The base weapon speed multiplier before any weight or scale adjustments are applied (1.0 = vanilla default speed).
-- kWeightPivot: The reference weapon weight (in Skyrim units) where no weight-based speed adjustment is applied. Heavier or lighter weapons are scaled relative to this pivot.
-- kWeightSlope: The amount of attack speed change per unit of weapon weight difference from the pivot. Negative values make heavier weapons slower and lighter weapons faster, positive values do the opposite.
-- kUsePlayerScale: If true, the actor's scale (size) is factored into attack speed calculations. Larger or smaller characters will have faster/slower attacks depending on kScaleSlope.
-- kScaleSlope: The amount of attack speed change per unit of scale difference from 1.0 (normal size). Positive values make larger actors faster, negative values make them slower.
-- kMinAttackMult: The minimum allowed final attack speed multiplier after all calculations. Prevents extreme slowdowns.
-- kMaxAttackMult: The maximum allowed final attack speed multiplier after all calculations. Prevents extreme speed boosts.
+- kNoReductionInCombat
+  - When true, combat keeps full base speed.
 
-**Hints**: 
-- Use kToggleSpeedEvent, because the key is not always recognized by the game (e.g., when using a controller).
-- Location rules can either replace or add to the base reductions (configurable in the SKSE Menu version).
+- kMinFinalSpeedMult
+  - Safety floor for the final SpeedMult.
 
-## Notes / Compatibility
-- Works alongside movement/anim mods, values are additive via ModActorValue(SpeedMult).
+- kEnableDiagonalSpeedFix, kEnableDiagonalSpeedFixForNPCs
+  - Removes the diagonal advantage, respects kMinFinalSpeedMult, uses a gentler penalty during sprint.
 
-- The plugin nudges a secondary AV internally to force a safe speed refresh, no ESP, no animations required.
+- Smoothing
+  - kSmoothingEnabled, kSmoothingMode (Expo, Rate, ExpoThenRate), kSmoothingHalfLifeMs, kSmoothingMaxChangePerSecond, and kSmoothingBypassOnStateChange control how quickly current deltas approach targets, with optional bypass on state changes like draw, sneak, sprint.
 
-- If your sprint mod renames the sprint event, update kSprintEventName.
+- Sprint animation sync
+  - kSyncSprintAnimToSpeed, kOnlySlowDown, kSprintAnimMin, kSprintAnimMax, kSprintAnimOwnSmoothing, kSprintAnimMode, kSprintAnimTau, kSprintAnimRatePerSec.
+
+- Attack scaling
+  - kAttackSpeedEnabled, kAttackOnlyWhenDrawn, kAttackBase, kWeightPivot, kWeightSlope, kUsePlayerScale, kScaleSlope, kMinAttackMult, kMaxAttackMult govern weapon-weight and actor-scale based attack speed. Updates on equip.
+
+- Input bindings
+  - kToggleSpeedEvent, kToggleSpeedKey, kSprintEventName drive jogging and sprint detection via game user events or a scancode.
+
+- Location rules
+  - kReduceInLocationSpecific and kReduceInLocationType define rules per location or keyword.
+kLocationAffects: "default" or "all".
+kLocationMode: "replace" or "add".
+
+- Misc
+  - kEnableSpeedScalingForNPCs applies scaling rules to NPCs.
+kIgnoreBeastForms disables modifiers in Werewolf and Vampire Lord forms.
+kEventDebounceMs reduces spam from rapid input changes.
+
+## Tips
+- When you change input bindings, listeners update immediately and the player gets a refresh.
+
+- Controller thumbstick axes are filtered with a dead zone and feed the diagonal correction.
+
+- The plugin nudges a harmless actor value to trigger Skyrim’s movement recompute, then compensates it so gameplay values stay intact. This avoids stuck movement after loads or rapid state changes.
+
+## Troubleshooting
+**Inventory weight looks off or movement feels stuck after a load**
+The plugin restores a safe baseline and performs a refresh. If needed, open the menu and press Save Settings, or briefly toggle jogging to rewrite the current delta.
+
+**Diagonal still feels weird**
+Ensure the diagonal fix is enabled for the player. If your reductions are very strong, raise kMinFinalSpeedMult so the fix has headroom.
+
+**Attack speed does not change**
+Verify attack scaling is enabled and, if using “only when drawn”, that your weapon is drawn. Re-equip to force an update.
 
 ## Uninstall
-Remove the DLL and the JSON. No save bloat, no scripts left behind.
+Delete the DLL and the JSON. The plugin reverts its deltas and leaves no scripts in your save.
 
-## Credits
-SKSE team & CommonLibSSE/NG community.
+## Build From Source
+- Clone the repository
+
+- Configure with CMake for MSVC on Windows.
+
+- Link against SKSE and CommonLibSSE/NG as appropriate for your target runtime.
+
+- Build the release DLL and place it in Data\SKSE\Plugins\.
+
+## Roadmap
+[ ] Additional state hooks and alternate smoothing presets
+
+[ ] Optional per-weapon overrides
+
+[ ] More granular NPC filters
