@@ -25,9 +25,6 @@ No ESP and no scripts in your save; it is just a DLL with a JSON config. Optiona
 - [Uninstall](#uninstall)
 - [Build From Source](#build-from-source)
 - [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [Credits](#credits)
-- [License](#license)
 
 ---
 
