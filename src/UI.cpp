@@ -31,7 +31,7 @@ static bool MakeFormSpecFromForm(RE::TESForm* form, std::string& out) {
     } else {
         std::uint8_t modIdx = static_cast<std::uint8_t>(fid >> 24);
         if (auto* f = dh->LookupLoadedModByIndex(modIdx)) {
-            fname_sv = f->GetFilename();  // ← string_view
+            fname_sv = f->GetFilename();
             localId = fid & 0x00FFFFFF;
         }
     }
