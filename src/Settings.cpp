@@ -42,7 +42,7 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kAttackOnlyWhenDrawn"] = attackOnlyWhenDrawn.load();
     j["kEnableSpeedScalingForNPCs"] = enableSpeedScalingForNPCs.load();
     j["kEnableDiagonalSpeedFix"] = enableDiagonalSpeedFix.load();
-    j["kEnableDiagonalSpeedFixForNPCss"] = enableDiagonalSpeedFixForNPCs.load();
+    j["kEnableDiagonalSpeedFixForNPCs"] = enableDiagonalSpeedFixForNPCs.load();
     j["kIgnoreBeastForms"] = ignoreBeastForms.load();
     j["kAttackBase"] = attackBase.load();
     j["kWeightPivot"] = weightPivot.load();
@@ -54,6 +54,7 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kSmoothingEnabled"] = smoothingEnabled.load();
     j["kSmoothingAffectsNPCs"] = smoothingAffectsNPCs.load();
     j["kSmoothingBypassOnStateChange"] = smoothingBypassOnStateChange.load();
+    j["kSprintAffectsCombat"] = sprintAffectsCombat.load();
 
     switch (smoothingMode) {
         case SmoothingMode::Exponential:
@@ -69,6 +70,10 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
 
     j["kSmoothingHalfLifeMs"] = smoothingHalfLifeMs.load();
     j["kSmoothingMaxChangePerSecond"] = smoothingMaxChangePerSecond.load();
+    j["kSprintAnimOwnSmoothing"] = sprintAnimOwnSmoothing.load();
+    j["kSprintAnimMode"] = sprintAnimSmoothingMode.load();  // 0=Expo, 1=Rate, 2=ExpoThenRate
+    j["kSprintAnimTau"] = sprintAnimTau.load();
+    j["kSprintAnimRatePerSec"] = sprintAnimRatePerSec.load();
 
     auto dumpList = [](const std::vector<FormSpec>& v) {
         nlohmann::json arr = nlohmann::json::array();
@@ -88,6 +93,11 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kLocationAffects"] = (locationAffects == LocationAffects::AllStates) ? "all" : "default";
     j["kLocationMode"] = (locationMode == LocationMode::Add) ? "add" : "replace";
     j["kMinFinalSpeedMult"] = minFinalSpeedMult.load();
+    j["kSyncSprintAnimToSpeed"] = syncSprintAnimToSpeed.load();
+    j["kOnlySlowDown"] = onlySlowDown.load();
+    j["kSprintAnimMin"] = sprintAnimMin.load();
+    j["kSprintAnimMax"] = sprintAnimMax.load();
+    j["kEventDebounceMs"] = eventDebounceMs.load();
 
     std::ofstream out(file);
     if (!out.is_open()) return false;
@@ -213,6 +223,38 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kMinFinalSpeedMult")) {
         float v = j["kMinFinalSpeedMult"].get<float>();
         minFinalSpeedMult = std::clamp(v, 0.0f, 100.0f);
+    }
+    if (j.contains("kSyncSprintAnimToSpeed")) {
+        syncSprintAnimToSpeed = j["kSyncSprintAnimToSpeed"].get<bool>();
+    }
+    if (j.contains("kOnlySlowDown")) {
+        onlySlowDown = j["kOnlySlowDown"].get<bool>();
+    }
+    if (j.contains("kSprintAnimMin")) {
+        float v = j["kSprintAnimMin"].get<float>();
+        sprintAnimMin = std::clamp(v, 0.1f, 10.0f);
+    }
+    if (j.contains("kSprintAnimMax")) {
+        float v = j["kSprintAnimMax"].get<float>();
+        sprintAnimMax = std::clamp(v, 0.1f, 10.0f);
+    }
+    if (j.contains("kSprintAffectsCombat")) {
+        sprintAffectsCombat = j["kSprintAffectsCombat"].get<bool>();
+    }
+    if (j.contains("kSprintAnimOwnSmoothing")) {
+        sprintAnimOwnSmoothing = j["kSprintAnimOwnSmoothing"].get<bool>();
+    }
+    if (j.contains("kSprintAnimMode")) {
+        sprintAnimSmoothingMode = j["kSprintAnimMode"].get<int>();
+    }
+    if (j.contains("kSprintAnimTau")) {
+        sprintAnimTau = j["kSprintAnimTau"].get<float>();
+    }
+    if (j.contains("kSprintAnimRatePerSec")) {
+        sprintAnimRatePerSec = j["kSprintAnimRatePerSec"].get<float>();
+    }
+    if (j.contains("kEventDebounceMs")) {
+        eventDebounceMs = j["kEventDebounceMs"].get<int>();
     }
 
     reduceInLocationType.clear();

@@ -1,4 +1,4 @@
-#include "SpeedController.h"
+﻿#include "SpeedController.h"
 
 #include <chrono>
 #include <cmath>
@@ -88,6 +88,107 @@ static bool RaceIs(const RE::Actor* a, std::string_view edid) {
     return false;
 }
 
+static bool TrySetAnyGraphVarFloat(RE::Actor* a, std::initializer_list<const char*> names, float v) {
+    bool any = false;
+    for (auto n : names) {
+        any |= a->SetGraphVariableFloat(n, v);
+    }
+    return any;
+}
+
+static inline void ClampSpeedFloor(RE::Actor* a) {
+    if (!a) return;
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return;
+    const float floor = Settings::minFinalSpeedMult.load();
+    const float cur = avo->GetActorValue(RE::ActorValue::kSpeedMult);
+    if (cur < floor) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, floor - cur);
+    }
+}
+
+
+namespace {
+    inline float ExpoLerp(float prev, float target, float dt, float tau) {
+        if (tau <= 1e-6f) return target;
+        const float a = 1.0f - std::exp(-dt / std::max(1e-4f, tau));
+        return prev + a * (target - prev);
+    }
+    inline float RateTowards(float prev, float target, float dt, float ratePerSec) {
+        if (ratePerSec <= 0.f) return target;
+        const float maxStep = ratePerSec * dt;
+        const float d = target - prev;
+        if (d > maxStep) return prev + maxStep;
+        if (d < -maxStep) return prev - maxStep;
+        return target;
+    }
+    inline float SmoothSprintAnim(float prev, float target, float dt) {
+        if (!Settings::sprintAnimOwnSmoothing.load()) {
+            return prev + (target - prev);
+        }
+        using SM = Settings::SmoothingMode;
+        const auto mode = static_cast<SM>(Settings::sprintAnimSmoothingMode.load());
+        switch (mode) {
+            case SM::RateLimit:
+                return RateTowards(prev, target, dt, Settings::sprintAnimRatePerSec.load());
+            case SM::ExpoThenRate:
+                return RateTowards(prev, ExpoLerp(prev, target, dt, Settings::sprintAnimTau.load()), dt,
+                                   Settings::sprintAnimRatePerSec.load());
+            case SM::Exponential:
+            default:
+                return ExpoLerp(prev, target, dt, Settings::sprintAnimTau.load());
+        }
+    }
+    inline float PredictDiagonalPenalty(float curSM, float floor, float inX, float inY, bool sprinting) {
+        // f = max(|x|,|y|)/sqrt(x^2+y^2) (<=1), wie in UpdateDiagonalPenalty
+        const float ax = std::fabs(inX), ay = std::fabs(inY);
+        const float mag = std::sqrt(inX * inX + inY * inY);
+        const float maxc = std::max(ax, ay);
+        if (mag <= 1e-4f || maxc <= 0.0f) return 0.0f;
+
+        float f = std::min(1.0f, maxc / mag);
+        float headroom = std::max(0.0f, curSM - floor);
+        float penalty = headroom * (f - 1.0f);
+        if (sprinting) penalty *= 0.5f;
+        return penalty;
+    }
+
+}
+void SpeedController::UpdateSprintAnimRate(RE::Actor* a) {
+    if (!a) return;
+    if (!Settings::syncSprintAnimToSpeed.load()) return;
+    if (!IsSprintingByGraph(a)) {
+        TrySetAnyGraphVarFloat(a, {"fAnimSpeedMult", "AnimSpeedMult", "AnimSpeed", "fSprintSpeedMult"}, 1.0f);
+        sprintAnimRate_ = 1.0f;
+        return;
+    }
+
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return;
+
+    const float curSM = std::max(1.0f, avo->GetActorValue(RE::ActorValue::kSpeedMult));
+    float ratio = curSM / 100.0f;
+
+    if (Settings::onlySlowDown.load()) ratio = std::min(ratio, 1.0f);
+
+    ratio = std::clamp(ratio, Settings::sprintAnimMin.load(), Settings::sprintAnimMax.load());
+
+    const uint64_t nowMs = NowMs();
+    static uint64_t lastMs = nowMs;
+    const float dt = (lastMs == 0) ? (1.0f / 60.0f) : std::max(0.0f, (nowMs - lastMs) / 1000.0f);
+    lastMs = nowMs;
+
+    sprintAnimRate_ = SmoothSprintAnim(sprintAnimRate_, ratio, dt);
+
+    TrySetAnyGraphVarFloat(a,
+                           {
+                               "fAnimSpeedMult",
+                               "AnimSpeedMult", "AnimSpeed",
+                               "fSprintSpeedMult"
+                           },
+                           sprintAnimRate_);
+}
+
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESEquipEvent* evn,
                                                        RE::BSTEventSource<RE::TESEquipEvent>*) {
@@ -107,34 +208,37 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESEquipEvent* 
 
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESLoadGameEvent*, RE::BSTEventSource<RE::TESLoadGameEvent>*) {
+    loading_.store(true, std::memory_order_relaxed);
     Settings::LoadFromJson(Settings::DefaultPath());
     LoadToggleBindingFromJson();
     lastSprintMs_.store(0, std::memory_order_relaxed);
 
+    // OnPostLoadGame();
     return RE::BSEventNotifyControl::kContinue;
 }
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESCombatEvent* evn,
                                                        RE::BSTEventSource<RE::TESCombatEvent>*) {
     if (evn) {
-        Apply();
+        pendingRefresh_.store(true, std::memory_order_relaxed);
     }
-
     return RE::BSEventNotifyControl::kContinue;
 }
 
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::BSAnimationGraphEvent* evn,
                                                        RE::BSTEventSource<RE::BSAnimationGraphEvent>*) {
-    if (!evn) {
-        return RE::BSEventNotifyControl::kContinue;
-    }
+    if (!evn) return RE::BSEventNotifyControl::kContinue;
 
     auto* pc = RE::PlayerCharacter::GetSingleton();
     if (pc && evn->holder && evn->holder != pc) {
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    Apply();
+    if (refreshGuard_.load(std::memory_order_relaxed)) {
+        return RE::BSEventNotifyControl::kContinue;
+    }
+
+    pendingRefresh_.store(true, std::memory_order_relaxed);
     return RE::BSEventNotifyControl::kContinue;
 }
 
@@ -196,6 +300,8 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
                 const auto now = std::chrono::steady_clock::now();
                 if (now - lastToggle_ >= toggleCooldown_) {
                     if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+                        ClearDiagDeltaFor(pc);
+
                         const float before = CaseToDelta(pc);
                         joggingMode_ = !joggingMode_;
                         const float after = CaseToDelta(pc);
@@ -205,6 +311,10 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
                             ModSpeedMult(pc, diff);
                         }
                         currentDelta = after;
+
+                        if (Settings::enableDiagonalSpeedFix.load()) {
+                            UpdateDiagonalPenalty(pc);
+                        }
                         ForceSpeedRefresh(pc);
                     }
                     lastToggle_ = now;
@@ -235,7 +345,7 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
             if (Settings::enableDiagonalSpeedFix.load()) {
                 if (UpdateDiagonalPenalty(pc)) {
-                    ForceSpeedRefresh(pc);
+                    pendingRefresh_.store(true, std::memory_order_relaxed);
                 }
             } else {
                 ClearDiagDeltaFor(pc);
@@ -329,7 +439,7 @@ void SpeedController::UpdateBindingsFromSettings() {
 void SpeedController::LoadToggleBindingFromJson() {
     toggleKeyCode_ = 0;
     toggleUserEvent_.clear();
-    sprintUserEvent_ = "Shout";
+    sprintUserEvent_ = Settings::sprintEventName;
 
     std::ifstream in(Settings::DefaultPath());
     if (!in.is_open()) return;
@@ -360,12 +470,40 @@ void SpeedController::StartHeartbeat() {
         while (run_) {
             std::this_thread::sleep_for(33ms);
             SKSE::GetTaskInterface()->AddTask([this, &prevSprint]() {
+                // Bail out completely while loading to avoid races and stale writes
+                if (loading_.load(std::memory_order_relaxed)) {
+                    return;
+                }
+
                 this->Apply();
+
                 if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
                     this->UpdateAttackSpeed(pc);
+                    this->UpdateSprintAnimRate(pc);
+
+                    int n = postLoadNudges_.load(std::memory_order_relaxed);
+                    if (n > 0) {
+                        const uint64_t now = NowMs();
+                        if (now >= postLoadGraceUntilMs_.load(std::memory_order_relaxed)) {
+                            ForceSpeedRefresh(pc);
+                            postLoadNudges_.store(n - 1, std::memory_order_relaxed);
+                        }
+                    }
+
+                    if (pendingRefresh_.exchange(false)) {
+                        this->ForceSpeedRefresh(pc);
+                    }
 
                     const bool curSprint = IsSprintingByGraph(pc);
                     if (curSprint != prevSprint) {
+                        if (!curSprint) {
+                            pc->SetGraphVariableFloat("fAnimSpeedMult", 1.0f);
+                            pc->SetGraphVariableFloat("AnimSpeedMult", 1.0f);
+                            pc->SetGraphVariableFloat("AnimSpeed", 1.0f);
+                            pc->SetGraphVariableFloat("fSprintSpeedMult", 1.0f);
+                            sprintAnimRate_ = 1.0f;
+                        }
+                        ClearDiagDeltaFor(pc);
                         ForceSpeedRefresh(pc);
                         prevSprint = curSprint;
                     }
@@ -460,26 +598,84 @@ void SpeedController::TryInitDrawnFromGraph() {
 
 SpeedController::MoveCase SpeedController::ComputeCase(const RE::Actor* a) const {
     if (!a) return MoveCase::Default;
-    if (Settings::noReductionInCombat && a->IsInCombat() && IsWeaponDrawnByState(a)) {
+    if (Settings::noReductionInCombat && a->IsInCombat()) {
         return MoveCase::Combat;
-    }
-    if (IsWeaponDrawnByState(a)) {
-        return MoveCase::Drawn;
     }
     if (a->IsSneaking()) {
         return MoveCase::Sneak;
     }
+    if (IsWeaponDrawnByState(a)) {
+        return MoveCase::Drawn;
+    }
     return MoveCase::Default;
 }
 
-void SpeedController::OnPreLoadGame() { loading_.store(true, std::memory_order_relaxed); }
+void SpeedController::OnPreLoadGame() {
+    loading_.store(true, std::memory_order_relaxed);
+    postLoadCleaned_.store(false, std::memory_order_relaxed);
+}
 
-void SpeedController::OnPostLoadGame() {
+void SpeedController::OnPostLoadGame() { DoPostLoadCleanup(); }
+
+void SpeedController::DoPostLoadCleanup() {
+    if (postLoadCleaned_.exchange(true)) return;
+
     SKSE::GetTaskInterface()->AddTask([this]() {
-        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
-            currentDelta = CaseToDelta(pc);
-            ForceSpeedRefresh(pc);
+        auto* pc = RE::PlayerCharacter::GetSingleton();
+        auto* avo = pc ? pc->AsActorValueOwner() : nullptr;
+
+        loading_.store(true, std::memory_order_relaxed);
+
+        if (pc && avo) {
+            if (snapshotLoaded_.load(std::memory_order_relaxed)) {
+                const float snapCur = currentDelta;
+                const float snapDiag = diagDelta_;
+                const bool snapJog = joggingMode_;
+
+                RevertDeltasFor(pc);
+
+                float base = savedBaselineSM_;
+                if (!std::isfinite(base)) {
+                    const float curAfterRevert = avo->GetActorValue(RE::ActorValue::kSpeedMult);
+                    base = curAfterRevert;
+                }
+                {
+                    const float cur = avo->GetActorValue(RE::ActorValue::kSpeedMult);
+                    avo->ModActorValue(RE::ActorValue::kSpeedMult, base - cur);
+                }
+
+                if (std::fabs(snapCur) > 1e-6f) {
+                    avo->ModActorValue(RE::ActorValue::kSpeedMult, snapCur);
+                    currentDelta = snapCur;
+                }
+                if (std::fabs(snapDiag) > 1e-6f) {
+                    avo->ModActorValue(RE::ActorValue::kSpeedMult, snapDiag);
+                    diagDelta_ = snapDiag;
+                }
+                joggingMode_ = snapJog;
+
+                snapshotLoaded_.store(false, std::memory_order_relaxed);
+                ForceSpeedRefresh(pc);
+            } else {
+                RevertDeltasFor(pc);
+                currentDelta = 0.0f;
+                diagDelta_ = 0.0f;
+                attackDelta_ = 0.0f;
+            }
+
+            moveX_ = 0.0f;
+            moveY_ = 0.0f;
+            lastApplyPlayerMs_ = NowMs();
         }
+
+        currentDeltaNPC_.clear();
+        attackDeltaNPC_.clear();
+        diagDeltaNPC_.clear();
+
+        postLoadGraceUntilMs_.store(NowMs() + 800, std::memory_order_relaxed);
+        postLoadNudges_.store(3, std::memory_order_relaxed);
+        pendingRefresh_.store(true, std::memory_order_relaxed);
+
         loading_.store(false, std::memory_order_relaxed);
     });
 }
@@ -509,10 +705,13 @@ bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY) 
 
     const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
     const float floor = Settings::minFinalSpeedMult.load();
-    float newDiag = curSM * (f - 1.0f);
+    const float headroom = std::max(0.0f, curSM - floor);
 
-    if (curSM + newDiag < floor) {
-        newDiag = floor - curSM;
+    float newDiag = headroom * (f - 1.0f);  // <= 0
+
+    if (IsSprintingByGraph(a)) {
+        // Make diagonal penalty less severe when sprinting
+        newDiag *= 0.5f;
     }
 
     if (std::fabs(newDiag) > 0.001f) {
@@ -601,7 +800,12 @@ float SpeedController::CaseToDelta(const RE::Actor* a) const {
             sprint = (last != 0) && (now - last <= kSprintLatchMs);
         }
     }
-    if (sprint) base += Settings::increaseSprinting.load();
+    if (sprint) {
+        const MoveCase c = ComputeCase(a);
+        if (c != MoveCase::Combat || Settings::sprintAffectsCombat.load()) {
+            base += Settings::increaseSprinting.load();
+        }
+    }
     return base;
 }
 
@@ -613,7 +817,21 @@ void SpeedController::RefreshNow() {
 }
 
 void SpeedController::Apply() {
+    {
+        static uint64_t lastApplyMainMs = 0;
+        const uint64_t now = NowMs();
+        const int gap = std::max(0, Settings::eventDebounceMs.load());
+        if (gap > 0 && lastApplyMainMs != 0 && (now - lastApplyMainMs) < static_cast<uint64_t>(gap)) {
+            return;
+        }
+        lastApplyMainMs = now;
+    }
+    if (NowMs() < postLoadGraceUntilMs_.load(std::memory_order_relaxed)) {
+        return;
+    }
+
     if (loading_.load(std::memory_order_relaxed)) return;
+    if (refreshGuard_.load(std::memory_order_relaxed)) return;
 
     const bool cur = Settings::enableSpeedScalingForNPCs.load();
     if (prevAffectNPCs_ && !cur) {
@@ -668,6 +886,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
 
         if (flip) {
             smoothing = false;
+            ForceSpeedRefresh(a);
         }
     }
 
@@ -680,13 +899,37 @@ void SpeedController::ApplyFor(RE::Actor* a) {
 
     if (auto* avo = a->AsActorValueOwner()) {
         const float floor = Settings::minFinalSpeedMult.load();
-        const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
-        float expected = curSM + diff;
 
-        if (expected < floor) {
-            diff = floor - curSM;
-            newDelta = cur + diff;
+        float& curSlot = isPlayer ? currentDelta : currentDeltaNPC_[a->formID];
+        float& diagSlot = DiagDeltaSlot(a);
+
+        const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
+        const float baseNoUs = curSM - curSlot - diagSlot;
+
+        bool wantDiag =
+            isPlayer ? Settings::enableDiagonalSpeedFix.load() : Settings::enableDiagonalSpeedFixForNPCs.load();
+
+        float predictedDiag = 0.0f;
+        if (wantDiag) {
+            float x = 0.f, y = 0.f;
+            bool sprinting = IsSprintingByGraph(a);
+            if (isPlayer) {
+                x = moveX_;
+                y = moveY_;
+            } else {
+                (void)TryGetMoveAxesFromGraph(a, x, y);
+            }
+            predictedDiag = PredictDiagonalPenalty(baseNoUs + newDelta, floor, x, y, sprinting);
         }
+
+        float expectedFinal = baseNoUs + newDelta + predictedDiag;
+
+        if (expectedFinal < floor) {
+            const float needed = floor - expectedFinal;
+            newDelta += needed;
+        }
+
+        diff = newDelta - curSlot;
     }
 
     if (std::fabs(diff) > 0.0001f) {
@@ -701,6 +944,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     } else {
         ClearDiagDeltaFor(a);
     }
+    ClampSpeedFloor(a);
 }
 
 
@@ -712,12 +956,39 @@ void SpeedController::ModSpeedMult(RE::Actor* actor, float delta) {
 
 void SpeedController::ForceSpeedRefresh(RE::Actor* actor) {
     if (!actor) return;
+    if (loading_.load(std::memory_order_relaxed)) return;
+
+    const uint64_t now = NowMs();
+    if (now < postLoadGraceUntilMs_.load(std::memory_order_relaxed)) {
+        pendingRefresh_.store(true, std::memory_order_relaxed);
+        return;
+    }
+
+    uint64_t prev = lastRefreshMs_.load(std::memory_order_relaxed);
+    if (prev != 0 && (now - prev) < 25) return;
+    lastRefreshMs_.store(now, std::memory_order_relaxed);
 
     if (auto* avo = actor->AsActorValueOwner()) {
-        avo->ModActorValue(RE::ActorValue::kCarryWeight, 0.1f);
-        avo->ModActorValue(RE::ActorValue::kCarryWeight, -0.1f);
+        const float before = avo->GetActorValue(RE::ActorValue::kCarryWeight);
+
+        refreshGuard_.store(true, std::memory_order_relaxed);
+        constexpr float eps = kRefreshEps;
+        avo->ModActorValue(RE::ActorValue::kCarryWeight, +eps);
+        avo->ModActorValue(RE::ActorValue::kCarryWeight, -eps);
+        refreshGuard_.store(false, std::memory_order_relaxed);
+
+        const float after = avo->GetActorValue(RE::ActorValue::kCarryWeight);
+        const float diff = after - before;
+
+        const bool looksLikeOurNudge = std::fabs(std::fabs(diff) - eps) < 0.005f;
+        const bool suspiciousZero = (after <= 0.01f && before > 0.01f);
+
+        if ((looksLikeOurNudge || suspiciousZero) && std::fabs(diff) > 1e-6f) {
+            avo->ModActorValue(RE::ActorValue::kCarryWeight, -diff);
+        }
     }
 }
+
 
 bool SpeedController::IsWeaponDrawnByState(const RE::Actor* a) {
     if (!a) return false;

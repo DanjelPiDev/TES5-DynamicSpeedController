@@ -22,6 +22,7 @@ public:
 
     void OnPostLoadGame();
     void OnPreLoadGame();
+    void DoPostLoadCleanup();
 
     void RefreshNow();
     void UpdateBindingsFromSettings();
@@ -31,6 +32,17 @@ public:
 
     float GetCurrentDelta() const;
     void SetCurrentDelta(float d);
+
+    float GetDiagDelta() const { return diagDelta_; }
+    void SetDiagDelta(float d) { diagDelta_ = d; }
+
+    void SetSnapshot(bool jogging, float curDelta, float diag, float baseSM) {
+        joggingMode_ = jogging;
+        currentDelta = curDelta;
+        diagDelta_ = diag;
+        savedBaselineSM_ = baseSM;
+        snapshotLoaded_.store(true, std::memory_order_relaxed);
+    }
 
 private:
     enum class MoveCase : std::uint8_t { Combat, Drawn, Sneak, Default };
@@ -61,6 +73,18 @@ private:
         }
         return target;
     }
+    std::atomic<bool> pendingRefresh_{false};
+    std::atomic<bool> refreshGuard_{false};
+    std::atomic<uint64_t> lastRefreshMs_{0};
+    std::atomic<int> postLoadNudges_{0};
+    std::atomic<uint64_t> postLoadGraceUntilMs_{0};
+    std::atomic<bool> postLoadCleaned_{false};
+    std::atomic<bool> snapshotLoaded_{false};
+    float savedBaselineSM_ = NAN;
+
+    static constexpr float kRefreshEps = 0.10f;
+
+    float sprintAnimRate_ = 1.0f;
 
     float smVelPlayer_ = 0.0f;
     std::unordered_map<std::uint32_t, float> smVelNPC_;
@@ -104,6 +128,8 @@ private:
     std::chrono::steady_clock::time_point lastToggle_{};
     std::chrono::milliseconds toggleCooldown_{150};
 
+    void UpdateSprintAnimRate(RE::Actor* a);
+
     void LoadToggleBindingFromJson();
 
     void StartHeartbeat();
@@ -129,7 +155,7 @@ private:
 
     static bool IsInBeastForm(const RE::Actor* a);
     static void ModSpeedMult(RE::Actor* actor, float delta);
-    static void ForceSpeedRefresh(RE::Actor* actor);
+    void ForceSpeedRefresh(RE::Actor* actor);
     static bool IsWeaponDrawnByState(const RE::Actor* a);
     static bool IsSprintingByGraph(const RE::Actor* a);
 

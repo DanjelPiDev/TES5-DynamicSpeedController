@@ -87,6 +87,12 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
     ImGui::Separator();
     ImGui::Text("Smoothing / Acceleration");
 
+    // kEventDebounceMs
+    int eventDebounceMs = Settings::eventDebounceMs.load();
+    if (ImGui::SliderInt("Event Debounce (ms)", &eventDebounceMs, 1, 100)) {
+        Settings::eventDebounceMs.store(eventDebounceMs);
+    }
+
     bool smooth = Settings::smoothingEnabled.load();
     if (ImGui::Checkbox("Enable smoothing", &smooth)) {
         Settings::smoothingEnabled.store(smooth);
@@ -103,7 +109,7 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
     }
 
     int mode = static_cast<int>(Settings::smoothingMode);
-    const char* modes[] = {"Exponential", "RateLimit", "ExpoThenRate", "Spring"};
+    const char* modes[] = {"Exponential", "RateLimit", "ExpoThenRate"};
     if (ImGui::Combo("Mode", &mode, modes, IM_ARRAYSIZE(modes))) {
         Settings::smoothingMode = static_cast<Settings::SmoothingMode>(mode);
     }
@@ -161,9 +167,52 @@ void __stdcall UI::SpeedConfig::Render() {
         Settings::increaseSprinting.store(increaseSprintVal);
     }
 
+    bool sprintAffectsCombat = Settings::sprintAffectsCombat.load();
+    if (ImGui::Checkbox("Sprint Affects Combat", &sprintAffectsCombat)) {
+        Settings::sprintAffectsCombat.store(sprintAffectsCombat);
+    }
+
     bool noReductionInCombatVal = Settings::noReductionInCombat.load();
     if (ImGui::Checkbox("No Reduction In Combat", &noReductionInCombatVal)) {
         Settings::noReductionInCombat.store(noReductionInCombatVal);
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Animations");
+    bool syncAnim = Settings::syncSprintAnimToSpeed.load();
+    if (ImGui::Checkbox("Sync Sprint Animations to Speed", &syncAnim)) {
+        Settings::syncSprintAnimToSpeed.store(syncAnim);
+    }
+    bool onlySlowDown = Settings::onlySlowDown.load();
+    if (ImGui::Checkbox("Only Slow Down (No Speedup)", &onlySlowDown)) {
+        Settings::onlySlowDown.store(onlySlowDown);
+    }
+    float sprintAnimMin = Settings::sprintAnimMin.load();
+    if (ImGui::SliderFloat("Sprint Anim Min", &sprintAnimMin, 0.0f, 1.0f, "%.2f")) {
+        Settings::sprintAnimMin.store(sprintAnimMin);
+    }
+    float sprintAnimMax = Settings::sprintAnimMax.load();
+    if (ImGui::SliderFloat("Sprint Anim Max", &sprintAnimMax, 0.25f, 2.0f, "%.2f")) {
+        Settings::sprintAnimMax.store(sprintAnimMax);
+    }
+    ImGui::Separator();
+    ImGui::Text("Animation Smoothing");
+    bool sprintAnimOwnSmoothing = Settings::sprintAnimOwnSmoothing.load();
+    if (ImGui::Checkbox("Own Smoothing for Sprint Animations", &sprintAnimOwnSmoothing)) {
+        Settings::sprintAnimOwnSmoothing.store(sprintAnimOwnSmoothing);
+    }
+    int sprintAnimMode = Settings::sprintAnimSmoothingMode.load();
+    const char* sprintAnimModes[] = {"Exponential", "RateLimit", "ExpoThenRate"};
+    if (ImGui::Combo("Smoothing Mode", &sprintAnimMode, sprintAnimModes, IM_ARRAYSIZE(sprintAnimModes))) {
+        Settings::sprintAnimSmoothingMode.store(sprintAnimMode);
+    }
+    float sprintAnimTau = Settings::sprintAnimTau.load();
+    if (ImGui::SliderFloat("Smoothing Tau (seconds)", &sprintAnimTau, 0.01f, 1.0f, "%.2f")) {
+        Settings::sprintAnimTau.store(sprintAnimTau);
+    }
+    float sprintAnimRatePerSec = Settings::sprintAnimRatePerSec.load();
+    if (ImGui::SliderFloat("Smoothing Rate (steps/sec)", &sprintAnimRatePerSec, 0.1f, 20.0f, "%.2f")) {
+        Settings::sprintAnimRatePerSec.store(sprintAnimRatePerSec);
     }
 
 

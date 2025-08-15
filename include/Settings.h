@@ -37,6 +37,7 @@ struct Settings {
     // Attack speed scaling
     static inline std::atomic<bool> attackSpeedEnabled{true};
     static inline std::atomic<bool> attackOnlyWhenDrawn{true};
+    static inline std::atomic<bool> sprintAffectsCombat{false};
 
     static inline std::atomic<float> attackBase{1.0f};
     static inline std::atomic<float> weightPivot{10.0f};   // reference weight in Skyrim units
@@ -46,6 +47,19 @@ struct Settings {
 
     static inline std::atomic<float> minAttackMult{0.6f};
     static inline std::atomic<float> maxAttackMult{1.8f};
+
+    // Animation coupling
+    static inline std::atomic<bool> syncSprintAnimToSpeed{true};  // Master toggle
+    static inline std::atomic<bool> onlySlowDown{true};           // avoid >1x (No Cartoony-Speedup)
+    static inline std::atomic<float> sprintAnimMin{0.50f};        // clamp
+    static inline std::atomic<float> sprintAnimMax{1.25f};        // clamp
+
+    static inline std::atomic<bool> sprintAnimOwnSmoothing{true};
+    static inline std::atomic<int> sprintAnimSmoothingMode{static_cast<int>(SmoothingMode::ExpoThenRate)};
+    static inline std::atomic<float> sprintAnimTau{0.10f};        // 100ms
+    static inline std::atomic<float> sprintAnimRatePerSec{5.0f};  // max steps per second
+
+    static inline std::atomic<int> eventDebounceMs{10};
 
     // Location stuff
     static bool ParseFormSpec(const std::string& spec, std::string& plugin, std::uint32_t& id);
