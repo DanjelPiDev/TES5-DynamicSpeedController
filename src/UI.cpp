@@ -13,19 +13,37 @@ static int findIndex(const std::string& cur, const char* const* arr, int n) {
 
 static bool MakeFormSpecFromForm(RE::TESForm* form, std::string& out) {
     if (!form) return false;
-    auto* file = form->GetFile(0);
-    if (!file) return false;
+    auto* dh = RE::TESDataHandler::GetSingleton();
+    if (!dh) return false;
 
-    std::string_view fname = file->GetFilename();
-    std::uint32_t localId = form->GetLocalFormID();
+    const std::uint32_t fid = form->GetFormID();
+    const bool isLight = (fid & 0xFE000000) == 0xFE000000;
 
-    char buf[260];
-    std::snprintf(buf, sizeof(buf), "%.*s|0x%06X", static_cast<int>(fname.size()), fname.data(), localId);
+    std::string_view fname_sv;
+    std::uint32_t localId = 0;
 
-    out = buf;
+    if (isLight) {
+        std::uint16_t lightIdx = static_cast<std::uint16_t>((fid & 0x00FFF000) >> 12);
+        if (auto* f = dh->LookupLoadedLightModByIndex(lightIdx)) {
+            fname_sv = f->GetFilename();
+            localId = fid & 0x00000FFF;
+        }
+    } else {
+        std::uint8_t modIdx = static_cast<std::uint8_t>(fid >> 24);
+        if (auto* f = dh->LookupLoadedModByIndex(modIdx)) {
+            fname_sv = f->GetFilename();  // ← string_view
+            localId = fid & 0x00FFFFFF;
+        }
+    }
+
+    if (fname_sv.empty()) return false;
+
+    char buf[300];
+    std::snprintf(buf, sizeof(buf), "%.*s|0x%06X", static_cast<int>(fname_sv.size()), fname_sv.data(), localId);
+
+    out.assign(buf);
     return true;
 }
-
 
 static bool GetCurrentLocationSpec(std::string& out) {
     auto* pc = RE::PlayerCharacter::GetSingleton();
@@ -41,6 +59,40 @@ static bool GetCurrentLocationSpec(std::string& out) {
     return MakeFormSpecFromForm(loc, out);
 }
 
+
+static RE::BGSLocation* GetCurrentLocationPtr() {
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (!pc) return nullptr;
+    if (auto* l = pc->GetCurrentLocation()) return l;
+    if (auto* cell = pc->GetParentCell()) return cell->GetLocation();
+    return nullptr;
+}
+
+static void CollectKeywordsForLocation(RE::BGSLocation* loc,
+                                       std::vector<std::pair<std::string, std::string>>& outNameSpec) {
+    outNameSpec.clear();
+    if (!loc) return;
+
+    std::unordered_set<RE::FormID> seen;
+    for (auto* p = loc; p; p = p->parentLoc) {
+        const std::uint32_t n = p->GetNumKeywords();
+        for (std::uint32_t i = 0; i < n; ++i) {
+            auto kwOpt = p->GetKeywordAt(i);
+            if (!kwOpt.has_value() || !kwOpt.value()) continue;
+            auto* kw = kwOpt.value();
+            if (!seen.insert(kw->GetFormID()).second) continue;
+
+            std::string spec;
+            if (!MakeFormSpecFromForm(kw, spec)) continue;
+
+            const char* edid = kw->GetFormEditorID();
+            std::string display = (edid && *edid) ? std::string(edid) : spec;
+            outNameSpec.emplace_back(std::move(display), std::move(spec));
+        }
+    }
+
+    std::sort(outNameSpec.begin(), outNameSpec.end(), [](auto& a, auto& b) { return a.first < b.first; });
+}
 
 
 void UI::Register() {
@@ -437,15 +489,50 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
     if (ImGui::CollapsingHeader("Location Types (BGSKeyword e.g. LocType*)", ImGuiTreeNodeFlags_DefaultOpen)) {
         static char typeBuf[256] = {};
         static float typeVal = 45.0f;
+        static std::vector<std::pair<std::string, std::string>> s_curLocKw;
+        static int s_curLocKwIdx = -1;
 
         ImGui::InputText("Keyword (Plugin|0xID)", typeBuf, sizeof(typeBuf));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Use Current Location")) {
+            s_curLocKw.clear();
+            s_curLocKwIdx = -1;
+            if (auto* loc = GetCurrentLocationPtr()) {
+                CollectKeywordsForLocation(loc, s_curLocKw);
+            }
+        }
+
+        if (!s_curLocKw.empty()) {
+            std::vector<const char*> items;
+            items.reserve(s_curLocKw.size());
+            for (auto& kv : s_curLocKw) items.push_back(kv.first.c_str());
+
+            if (ImGui::Combo("Pick keyword from current location", &s_curLocKwIdx, items.data(),
+                             static_cast<int>(items.size()))) {
+                if (s_curLocKwIdx >= 0 && s_curLocKwIdx < static_cast<int>(s_curLocKw.size())) {
+                    std::snprintf(typeBuf, sizeof(typeBuf), "%s", s_curLocKw[s_curLocKwIdx].second.c_str());
+                }
+            }
+        } else {
+            ImGui::TextDisabled("Tip: Click 'Use Current Location' to list its keywords (LocType*, etc.).");
+        }
+
         ImGui::SliderFloat("Value (reduce)", &typeVal, 0.f, 100.f, "%.1f");
+
+        auto alreadyInList = [](const Settings::FormSpec& needle) {
+            for (auto& fs : Settings::reduceInLocationType) {
+                if (fs.id == needle.id && fs.plugin == needle.plugin) return true;
+            }
+            return false;
+        };
 
         if (ImGui::Button("Add Type")) {
             Settings::FormSpec fs;
             if (Settings::ParseFormSpec(typeBuf, fs.plugin, fs.id)) {
                 fs.value = std::max(0.f, std::min(100.f, typeVal));
-                Settings::reduceInLocationType.push_back(std::move(fs));
+                if (!alreadyInList(fs)) {
+                    Settings::reduceInLocationType.push_back(std::move(fs));
+                }
                 typeBuf[0] = '\0';
             }
         }
