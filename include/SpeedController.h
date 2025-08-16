@@ -6,8 +6,8 @@
 
 struct PathSample {
     float x, y, z;
-    float sxy;     // kumulierte XY-Strecke
-    uint64_t tMs;  // Zeitstempel
+    float sxy;     // Cumulative distance in XY plane
+    uint64_t tMs;  // Timestamp in milliseconds
 };
 
 class SpeedController : public RE::BSTEventSink<RE::TESCombatEvent>,
@@ -57,7 +57,6 @@ public:
     void ClearPathFor(RE::Actor* a);
     void PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint64_t nowMs);
     bool ComputePathSlopeDeg(RE::Actor* a, float lookbackUnits, float maxAgeSec, float& outDeg);
-    bool TryGetGroundToken(const RE::Actor* a, std::string& outToken) const;
 
 private:
     enum class MoveCase : std::uint8_t { Combat, Drawn, Sneak, Default };
@@ -155,11 +154,6 @@ private:
     // Ground delta-Slots (analog to slope/diag)
     float groundDeltaPlayer_ = 0.0f;
     std::unordered_map<std::uint32_t, float> groundDeltaNPC_;
-
-    float& GroundDeltaSlot(RE::Actor* a);
-    void ClearGroundDeltaFor(RE::Actor* a);
-    bool UpdateGroundPenalty(RE::Actor* a, float dt);
-    static float GroundReduceForToken(std::string_view token);
 
     float& SlopeDeltaSlot(RE::Actor* a);
     void ClearSlopeDeltaFor(RE::Actor* a);

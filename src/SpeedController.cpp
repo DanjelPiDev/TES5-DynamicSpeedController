@@ -237,20 +237,15 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
     const uint64_t nowMs = NowMs();
     const auto pos = a->GetPosition();
 
-    // Pfad aktualisieren
     PushPathSample(a, pos, nowMs);
 
     float slopeDeg = 0.0f;
     bool haveSlope = false;
 
     if (Settings::slopeMethod.load() == 1) {
-        // Weg-basierte Steigung
         haveSlope =
             ComputePathSlopeDeg(a, Settings::slopeLookbackUnits.load(), Settings::slopeMaxHistorySec.load(), slopeDeg);
     } else {
-        // Fallback: Instant (dein alter Ansatz)
-        // -> optional: du kannst hier lastPosPlayer_/NPC_ weiterverwenden,
-        //    aber mit Pfad brauchst du die alten lastPos* nicht mehr.
         haveSlope = false;
     }
 
@@ -265,7 +260,6 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
         want = std::clamp(want, -absMax, absMax);
     }
 
-    // Exponential Smoothing (behältst du, aber du kannst 'tau' für snappigere Treppen auf 0.12–0.2 senken)
     float& slot = SlopeDeltaSlot(a);
     const float tau = std::max(0.01f, Settings::slopeTau.load());
     const float alpha = 1.0f - std::exp(-dt / tau);
@@ -1147,7 +1141,7 @@ void SpeedController::UpdateSlopeTickOnly() {
         ClampSpeedFloor(pc);
     }
 
-    // NPCs, wenn aktiv
+    // NPCs
     if (Settings::enableSpeedScalingForNPCs.load()) {
         auto* pl = RE::ProcessLists::GetSingleton();
         if (pl) {
@@ -1254,9 +1248,7 @@ void SpeedController::PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint
         const float dx = pos.x - last.x;
         const float dy = pos.y - last.y;
         const float dxy = std::sqrt(dx * dx + dy * dy);
-        // Mini-Filter: sehr kleine Schritte ignorieren, damit keine „zitternden“ In-Place-Messungen entstehen
         if (dxy < Settings::slopeMinXYPerFrame.load()) {
-            // trotzdem eine Zeitschranke pflegen, damit wir purgen können
             sxy = last.sxy;
         } else {
             sxy = last.sxy + dxy;
@@ -1264,7 +1256,6 @@ void SpeedController::PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint
     }
     q.push_back(PathSample{pos.x, pos.y, pos.z, sxy, nowMs});
 
-    // Alte Samples rausschmeißen (Zeitfenster)
     const uint64_t maxAgeMs = static_cast<uint64_t>(std::max(0.f, Settings::slopeMaxHistorySec.load()) * 1000.f);
     while (!q.empty() && (nowMs - q.front().tMs) > maxAgeMs) {
         q.pop_front();
@@ -1278,7 +1269,6 @@ bool SpeedController::ComputePathSlopeDeg(RE::Actor* a, float lookbackUnits, flo
     const auto& cur = q.back();
     const float wantSxy = std::max(0.f, cur.sxy - std::max(lookbackUnits, 0.0f));
 
-    // Finde Sample, das mindestens lookbackUnits hinter uns liegt
     const PathSample* ref = nullptr;
     for (int i = static_cast<int>(q.size()) - 1; i >= 0; --i) {
         if (q[static_cast<size_t>(i)].sxy <= wantSxy) {
@@ -1286,7 +1276,7 @@ bool SpeedController::ComputePathSlopeDeg(RE::Actor* a, float lookbackUnits, flo
             break;
         }
     }
-    if (!ref) ref = &q.front();  // notfalls ältestes
+    if (!ref) ref = &q.front();
 
     const float dxy = std::max(1e-3f, cur.sxy - ref->sxy);
     const float dz = cur.z - ref->z;

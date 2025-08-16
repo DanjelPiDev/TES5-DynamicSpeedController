@@ -9,20 +9,20 @@
 struct Settings {
     enum class SmoothingMode { Exponential = 0, RateLimit = 1, ExpoThenRate = 2 };
 
-    // Slope / Treppen
+    // Slopes
     static inline std::atomic<bool> slopeEnabled{false};
     static inline std::atomic<bool> slopeAffectsNPCs{true};
 
-    static inline std::atomic<float> slopeUphillPerDeg{0.60f};    // pro Grad bergauf (wird abgezogen)
-    static inline std::atomic<float> slopeDownhillPerDeg{0.30f};  // pro Grad bergab (wird addiert)
-    static inline std::atomic<float> slopeMaxAbs{25.0f};          // max. |Delta| durch Slope
-    static inline std::atomic<float> slopeTau{0.25f};             // Glättung in Sekunden
+    static inline std::atomic<float> slopeUphillPerDeg{0.60f};    // per degree uphill (subtracted)
+    static inline std::atomic<float> slopeDownhillPerDeg{0.30f};  // per degree downhill (added)
+    static inline std::atomic<float> slopeMaxAbs{25.0f};          // max. |Delta| from slope (in SpeedMult)
+    static inline std::atomic<float> slopeTau{0.25f};             // smoothing tau (in seconds)
 
-    static inline std::atomic<int> slopeMethod{1};               // 0 = Instant (alt), 1 = Path (neu)
-    static inline std::atomic<float> slopeLookbackUnits{96.0f};  // Distanzfenster (ca. ~1–1.5 m in Skyrim Units)
-    static inline std::atomic<float> slopeMaxHistorySec{1.0f};   // Positionen so lange halten
-    static inline std::atomic<float> slopeMinXYPerFrame{0.25f};  // Ignoriere zu kleine XY-Schritte
-    static inline std::atomic<int> slopeMedianN{3};              // optional: Median über N Fenster
+    static inline std::atomic<int> slopeMethod{1};               // 0 = Instant (old), 1 = Path (new)
+    static inline std::atomic<float> slopeLookbackUnits{96.0f};  // Distance (~1–1.5m in Skyrim Units)
+    static inline std::atomic<float> slopeMaxHistorySec{1.0f};   // Hold path samples for this long (in seconds)
+    static inline std::atomic<float> slopeMinXYPerFrame{0.25f};  // Ignore small movements (in Skyrim Units)
+    static inline std::atomic<int> slopeMedianN{3};
 
     // Slope-spezific final values
     static inline std::atomic<bool> slopeClampEnabled{false};
@@ -92,20 +92,6 @@ struct Settings {
 
     static inline std::vector<FormSpec> reduceInLocationType;      // BGSKeyword*
     static inline std::vector<FormSpec> reduceInLocationSpecific;  // BGSLocation*
-
-    static inline std::atomic<bool> groundEnabled{false};
-    static inline std::atomic<bool> groundAffectsNPCs{true};
-    static inline std::atomic<float> groundTau{0.10f};
-    static inline std::atomic<bool> groundClampEnabled{false};
-    static inline std::atomic<float> groundMinFinal{60.0f};
-    static inline std::atomic<float> groundMaxFinal{200.0f};
-
-    struct GroundRule {
-        std::string name;
-        float value = 0.f;
-    };
-
-    static inline std::vector<GroundRule> groundRules;
 
     enum class LocationAffects { DefaultOnly, AllStates };
     enum class LocationMode { Replace, Add };

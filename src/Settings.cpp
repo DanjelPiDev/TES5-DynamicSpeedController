@@ -114,24 +114,6 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kSlopeMinXYPerFrame"] = slopeMinXYPerFrame.load();
     j["kSlopeMedianN"] = slopeMedianN.load();
 
-    j["kGroundEnabled"] = groundEnabled.load();
-    j["kGroundAffectsNPCs"] = groundAffectsNPCs.load();
-    j["kGroundTau"] = groundTau.load();
-    j["kGroundClampEnabled"] = groundClampEnabled.load();
-    j["kGroundMinFinal"] = groundMinFinal.load();
-    j["kGroundMaxFinal"] = groundMaxFinal.load();
-
-    {
-        nlohmann::json arr = nlohmann::json::array();
-        for (auto& r : groundRules) {
-            nlohmann::json e;
-            e["name"] = r.name;
-            e["value"] = std::max(0.f, std::min(100.f, r.value));
-            arr.push_back(std::move(e));
-        }
-        j["kGroundRules"] = std::move(arr);
-    }
-
     std::ofstream out(file);
     if (!out.is_open()) return false;
     out << j.dump(4);
@@ -370,37 +352,6 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kSlopeMedianN")) {
         int n = j["kSlopeMedianN"].get<int>();
         slopeMedianN = std::clamp(n, 1, 10);
-    }
-
-    if (j.contains("kGroundEnabled")) {
-        groundEnabled = j["kGroundEnabled"].get<bool>();
-    }
-    if (j.contains("kGroundAffectsNPCs")) {
-        groundAffectsNPCs = j["kGroundAffectsNPCs"].get<bool>();
-    }
-    if (j.contains("kGroundTau")) {
-        groundTau = std::clamp(j["kGroundTau"].get<float>(), 0.01f, 5.0f);
-    }
-    if (j.contains("kGroundClampEnabled")) {
-        groundClampEnabled = j["kGroundClampEnabled"].get<bool>();
-    }
-    if (j.contains("kGroundMinFinal")) {
-        groundMinFinal = j["kGroundMinFinal"].get<float>();
-    }
-    if (j.contains("kGroundMaxFinal")) {
-        groundMaxFinal = j["kGroundMaxFinal"].get<float>();
-    }
-
-    groundRules.clear();
-    if (j.contains("kGroundRules") && j["kGroundRules"].is_array()) {
-        for (auto& e : j["kGroundRules"]) {
-            if (!e.is_object()) continue;
-            if (!e.contains("name") || !e.contains("value")) continue;
-            Settings::GroundRule r;
-            r.name = e["name"].get<std::string>();
-            r.value = clampf(e["value"].get<float>(), 0.f, 100.f);
-            if (!r.name.empty()) groundRules.push_back(std::move(r));
-        }
     }
 
     return true;
