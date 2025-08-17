@@ -46,6 +46,7 @@ Skyrim combines forward and sideways input in a way that makes diagonal movement
 - **Location rules** for specific locations or location types, with replace or add behavior and a choice to affect default only or all states.
 - **Safety floor** so SpeedMult never drops below your minimum.
 - **Beast form awareness** to ignore modifiers in Werewolf or Vampire Lord forms if desired.
+- **Slope / Terrain effects** that adjust movement speed dynamically based on uphill/downhill angle, including stairs, ramps, and uneven ground. Separate multipliers for uphill and downhill, min/max clamps, and smooth blending. Works in real time for both keyboard and controller, and can optionally affect NPCs.
 - **Lightweight and script-free**; no Papyrus, no save bloat.
 
 ---
