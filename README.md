@@ -107,11 +107,14 @@ If the SKSE menu is present, open the Mod Control Panel and select **Dynamic Spe
 ## Screenshots
 
 <div align="center">
-	<img src="images/20250815155713_1.jpg" alt="General Settings" width="300">
-	<img src="images/20250815155718_1.jpg" alt="Speed Settings" width="300">
-	<img src="images/20250815155720_1.jpg" alt="Attack Settings" width="300">
-	<img src="images/20250815155723_1.jpg" alt="Location Rules" width="300">
-	<img src="images/20250815155726_1.jpg" alt="Location Rules - Add Location" width="300">
+	<img src="images/156801-1755285609-865040815.webp" alt="General Settings" width="300">
+	<img src="images/156801-1755285645-393358034.webp" alt="Speed Settings" width="300">
+	<img src="images/156801-1755285868-265725594.webp" alt="Speed Settings" width="300">
+	<img src="images/156801-1755285875-139567159.webp" alt="Speed Settings" width="300">
+	<img src="images/156801-1755285875-139567159.webp" alt="Speed Settings" width="300">
+	<img src="images/156801-1755285875-139567159.webp" alt="Location Rules - Add Location" width="300">
+	<img src="images/156801-1755285693-1483819244.webp" alt="Attack Settings" width="300">
+	<img src="images/156801-1755285712-1338132135.webp" alt="Location Rules" width="300">
 </div>>
 
 ---
