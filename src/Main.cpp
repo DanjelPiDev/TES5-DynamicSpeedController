@@ -5,7 +5,7 @@
 
 using namespace SKSE;
 
-static constexpr std::uint32_t kSerVersion = 3;
+static constexpr std::uint32_t kSerVersion = 4;
 static constexpr std::uint32_t kSerID = 'DSC1';
 
 void OnSave(SKSE::SerializationInterface* intfc) {
@@ -13,12 +13,13 @@ void OnSave(SKSE::SerializationInterface* intfc) {
     bool jogging = sc->GetJoggingMode();
     float applied = sc->GetCurrentDelta();
     float diag = sc->GetDiagDelta();
+    float slope = sc->GetSlopeDelta();
 
     float baseSM = 100.0f;
     if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
         if (auto* avo = pc->AsActorValueOwner()) {
             const float cur = avo->GetActorValue(RE::ActorValue::kSpeedMult);
-            baseSM = cur - applied - diag;
+            baseSM = cur - applied - diag - slope;
         }
     }
 
@@ -27,43 +28,64 @@ void OnSave(SKSE::SerializationInterface* intfc) {
         intfc->WriteRecordData(&applied, sizeof(applied));
         intfc->WriteRecordData(&diag, sizeof(diag));
         intfc->WriteRecordData(&baseSM, sizeof(baseSM));
+        intfc->WriteRecordData(&slope, sizeof(slope));
     }
 }
 
 void OnLoad(SKSE::SerializationInterface* intfc) {
     std::uint32_t type, version, length;
+
     while (intfc->GetNextRecordInfo(type, version, length)) {
-        if (type == kSerID && (version >= 1 && version <= 3)) {
-            bool jogging = false;
-            float applied = 0.0f;
-            float diag = 0.0f;
-            float baseSM = NAN;
-
-            std::size_t bytesRead = 0;
-
-            intfc->ReadRecordData(&jogging, sizeof(jogging));
-            bytesRead += sizeof(jogging);
-            intfc->ReadRecordData(&applied, sizeof(applied));
-            bytesRead += sizeof(applied);
-
-            if (version >= 2 && length >= bytesRead + sizeof(diag)) {
-                intfc->ReadRecordData(&diag, sizeof(diag));
-                bytesRead += sizeof(diag);
-            }
-
-            if (length >= bytesRead + sizeof(baseSM)) {
-                intfc->ReadRecordData(&baseSM, sizeof(baseSM));
-                bytesRead += sizeof(baseSM);
-            }
-
-            if (length > bytesRead) {
-                std::vector<char> skip(length - bytesRead);
-                intfc->ReadRecordData(skip.data(), static_cast<std::uint32_t>(skip.size()));
-            }
-
-            SpeedController::GetSingleton()->SetSnapshot(jogging, applied, diag, baseSM);
-            SKSE::GetTaskInterface()->AddTask([]() { SpeedController::GetSingleton()->DoPostLoadCleanup(); });
+        if (type != kSerID) {
+            std::vector<char> skip(length);
+            if (length > 0) intfc->ReadRecordData(skip.data(), static_cast<std::uint32_t>(skip.size()));
+            continue;
         }
+
+        if (version < 1 || version > 4) {
+            std::vector<char> skip(length);
+            if (length > 0) intfc->ReadRecordData(skip.data(), static_cast<std::uint32_t>(skip.size()));
+            continue;
+        }
+
+        bool jogging = false;
+        float applied = 0.0f;
+        float diag = 0.0f;
+        float baseSM = NAN;
+        float slope = 0.0f;  // v4 neu
+
+        std::size_t bytesRead = 0;
+
+        auto try_read = [&](auto* ptr) {
+            const std::size_t need = sizeof(*ptr);
+            if (bytesRead + need > length) return false;
+            intfc->ReadRecordData(ptr, static_cast<std::uint32_t>(need));
+            bytesRead += need;
+            return true;
+        };
+
+        (void)try_read(&jogging);
+        (void)try_read(&applied);
+
+        if (version >= 2) (void)try_read(&diag);
+
+        (void)try_read(&baseSM);
+
+        if (version >= 4) (void)try_read(&slope);
+
+        if (length > bytesRead) {
+            std::vector<char> skip(length - bytesRead);
+            intfc->ReadRecordData(skip.data(), static_cast<std::uint32_t>(skip.size()));
+        }
+
+        auto* sc = SpeedController::GetSingleton();
+        if (version >= 4) {
+            sc->SetSnapshot(jogging, applied, diag, baseSM, slope);
+        } else {
+            sc->SetSnapshot(jogging, applied, diag, baseSM, 0);  // Slope = 0
+        }
+
+        SKSE::GetTaskInterface()->AddTask([]() { SpeedController::GetSingleton()->DoPostLoadCleanup(); });
     }
 }
 

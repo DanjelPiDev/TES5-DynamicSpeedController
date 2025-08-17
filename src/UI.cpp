@@ -287,11 +287,11 @@ void __stdcall UI::SpeedConfig::Render() {
             Settings::onlySlowDown.store(onlySlowDown);
         }
         float sprintAnimMin = Settings::sprintAnimMin.load();
-        if (ImGui::SliderFloat("Sprint Anim Min", &sprintAnimMin, 0.0f, 1.0f, "%.2f")) {
+        if (ImGui::SliderFloat("Sprint Anim Min", &sprintAnimMin, 0.0f, 2.0f, "%.2f")) {
             Settings::sprintAnimMin.store(sprintAnimMin);
         }
         float sprintAnimMax = Settings::sprintAnimMax.load();
-        if (ImGui::SliderFloat("Sprint Anim Max", &sprintAnimMax, 0.25f, 2.0f, "%.2f")) {
+        if (ImGui::SliderFloat("Sprint Anim Max", &sprintAnimMax, 0.05f, 2.0f, "%.2f")) {
             Settings::sprintAnimMax.store(sprintAnimMax);
         }
         ImGui::Separator();

@@ -42,11 +42,14 @@ public:
     float GetDiagDelta() const { return diagDelta_; }
     void SetDiagDelta(float d) { diagDelta_ = d; }
 
-    void SetSnapshot(bool jogging, float curDelta, float diag, float baseSM) {
+    float GetSlopeDelta() const { return slopeDeltaPlayer_; }
+
+    void SetSnapshot(bool jogging, float curDelta, float diag, float baseSM, float slope) {
         joggingMode_ = jogging;
         currentDelta = curDelta;
         diagDelta_ = diag;
         savedBaselineSM_ = baseSM;
+        slopeDeltaPlayer_ = slope;
         snapshotLoaded_.store(true, std::memory_order_relaxed);
     }
 
@@ -57,6 +60,23 @@ public:
     void ClearPathFor(RE::Actor* a);
     void PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint64_t nowMs);
     bool ComputePathSlopeDeg(RE::Actor* a, float lookbackUnits, float maxAgeSec, float& outDeg);
+
+    float diagResidualPlayer_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> diagResidualNPC_;
+
+    float slopeResidualPlayer_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> slopeResidualNPC_;
+
+    inline float& DiagResidualSlot(RE::Actor* a) {
+        auto* pc = RE::PlayerCharacter::GetSingleton();
+        if (a == pc) return diagResidualPlayer_;
+        return diagResidualNPC_[a->GetFormID()];
+    }
+    inline float& SlopeResidualSlot(RE::Actor* a) {
+        auto* pc = RE::PlayerCharacter::GetSingleton();
+        if (a == pc) return slopeResidualPlayer_;
+        return slopeResidualNPC_[a->GetFormID()];
+    }
 
 private:
     enum class MoveCase : std::uint8_t { Combat, Drawn, Sneak, Default };
@@ -155,6 +175,8 @@ private:
     float groundDeltaPlayer_ = 0.0f;
     std::unordered_map<std::uint32_t, float> groundDeltaNPC_;
 
+    void ClampSpeedFloorTracked(RE::Actor* a);
+    void RevertMovementDeltasFor(RE::Actor* a, bool clearSlope = true);
     float& SlopeDeltaSlot(RE::Actor* a);
     void ClearSlopeDeltaFor(RE::Actor* a);
     bool UpdateSlopePenalty(RE::Actor* a, float dt);

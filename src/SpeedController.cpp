@@ -157,36 +157,34 @@ namespace {
 void SpeedController::UpdateSprintAnimRate(RE::Actor* a) {
     if (!a) return;
     if (!Settings::syncSprintAnimToSpeed.load()) return;
-    if (!IsSprintingByGraph(a)) {
-        TrySetAnyGraphVarFloat(a, {"fAnimSpeedMult", "AnimSpeedMult", "AnimSpeed", "fSprintSpeedMult"}, 1.0f);
-        sprintAnimRate_ = 1.0f;
-        return;
+
+    bool sprinting = IsSprintingByGraph(a);
+    if (!sprinting) {
+        if (a == RE::PlayerCharacter::GetSingleton()) {
+            const uint64_t now = NowMs();
+            const uint64_t last = lastSprintMs_.load(std::memory_order_relaxed);
+            sprinting = (last != 0) && (now - last <= kSprintLatchMs);  // Latch wie bei CaseToDelta
+        }
     }
 
     auto* avo = a->AsActorValueOwner();
     if (!avo) return;
 
-    const float curSM = std::max(1.0f, avo->GetActorValue(RE::ActorValue::kSpeedMult));
-    float ratio = curSM / 100.0f;
-
-    if (Settings::onlySlowDown.load()) ratio = std::min(ratio, 1.0f);
-
-    ratio = std::clamp(ratio, Settings::sprintAnimMin.load(), Settings::sprintAnimMax.load());
+    float target = 1.0f;
+    if (sprinting) {
+        float ratio = std::max(1.0f, avo->GetActorValue(RE::ActorValue::kSpeedMult)) / 100.0f;
+        if (Settings::onlySlowDown.load()) ratio = std::min(ratio, 1.0f);
+        target = std::clamp(ratio, Settings::sprintAnimMin.load(), Settings::sprintAnimMax.load());
+    }
 
     const uint64_t nowMs = NowMs();
-    static uint64_t lastMs = nowMs;
+    static uint64_t lastMs = 0;
     const float dt = (lastMs == 0) ? (1.0f / 60.0f) : std::max(0.0f, (nowMs - lastMs) / 1000.0f);
     lastMs = nowMs;
 
-    sprintAnimRate_ = SmoothSprintAnim(sprintAnimRate_, ratio, dt);
+    sprintAnimRate_ = SmoothSprintAnim(sprintAnimRate_, target, dt);
 
-    TrySetAnyGraphVarFloat(a,
-                           {
-                               "fAnimSpeedMult",
-                               "AnimSpeedMult", "AnimSpeed",
-                               "fSprintSpeedMult"
-                           },
-                           sprintAnimRate_);
+    TrySetAnyGraphVarFloat(a, {"fAnimSpeedMult", "AnimSpeedMult", "AnimSpeed", "fSprintSpeedMult"}, sprintAnimRate_);
 }
 
 
@@ -219,6 +217,8 @@ void SpeedController::ClearSlopeDeltaFor(RE::Actor* a) {
         }
         slot = 0.0f;
     }
+    SlopeResidualSlot(a) = 0.0f;
+
     ClearPathFor(a);
     auto* pc = RE::PlayerCharacter::GetSingleton();
     if (a == pc) {
@@ -242,6 +242,14 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
     float slopeDeg = 0.0f;
     bool haveSlope = false;
 
+    bool still = false;
+
+    auto& q = PathBuf(a);
+    if (q.size() >= 2) {
+        const float movedXY = q.back().sxy - q[q.size() - 2].sxy;
+        still = (std::fabs(movedXY) < Settings::slopeMinXYPerFrame.load());
+    }
+
     if (Settings::slopeMethod.load() == 1) {
         haveSlope =
             ComputePathSlopeDeg(a, Settings::slopeLookbackUnits.load(), Settings::slopeMaxHistorySec.load(), slopeDeg);
@@ -250,14 +258,22 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
     }
 
     float want = 0.0f;
-    if (haveSlope) {
-        if (slopeDeg > 0.0f) {
-            want -= Settings::slopeUphillPerDeg.load() * slopeDeg;
-        } else if (slopeDeg < 0.0f) {
-            want += Settings::slopeDownhillPerDeg.load() * (-slopeDeg);
+    if (Settings::slopeMethod.load() == 1) {
+        if (!still) {
+            bool haveSlope = ComputePathSlopeDeg(a, Settings::slopeLookbackUnits.load(),
+                                                 Settings::slopeMaxHistorySec.load(), slopeDeg);
+            if (haveSlope) {
+                if (slopeDeg > 0.0f)
+                    want -= Settings::slopeUphillPerDeg.load() * slopeDeg;
+                else if (slopeDeg < 0.0f)
+                    want += Settings::slopeDownhillPerDeg.load() * (-slopeDeg);
+                want = std::clamp(want, -Settings::slopeMaxAbs.load(), Settings::slopeMaxAbs.load());
+            }
+        } else {
+            want = 0.0f;
         }
-        const float absMax = Settings::slopeMaxAbs.load();
-        want = std::clamp(want, -absMax, absMax);
+    } else {
+        want = 0.0f;
     }
 
     float& slot = SlopeDeltaSlot(a);
@@ -265,10 +281,16 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
     const float alpha = 1.0f - std::exp(-dt / tau);
     const float newDelta = slot + alpha * (want - slot);
 
-    if (std::fabs(newDelta - slot) > 1e-4f) {
+    float diff = newDelta - slot;
+    float& acc = SlopeResidualSlot(a);
+    acc += diff;
+
+    static constexpr float kSlopeGran = 1e-4f;
+    if (std::fabs(acc) >= kSlopeGran) {
         if (auto* avo = a->AsActorValueOwner()) {
-            avo->ModActorValue(RE::ActorValue::kSpeedMult, newDelta - slot);
-            slot = newDelta;
+            avo->ModActorValue(RE::ActorValue::kSpeedMult, acc);
+            slot += acc;
+            acc = 0.0f;
             return true;
         }
     }
@@ -602,6 +624,11 @@ void SpeedController::RevertAllNPCDeltas() {
         currentDeltaNPC_.clear();
         attackDeltaNPC_.clear();
         diagDeltaNPC_.clear();
+
+        diagResidualNPC_.clear();
+        slopeResidualNPC_.clear();
+        diagResidualPlayer_ = 0.0f;
+        slopeResidualPlayer_ = 0.0f;
         return;
     }
 
@@ -643,6 +670,11 @@ void SpeedController::RevertAllNPCDeltas() {
     currentDeltaNPC_.clear();
     attackDeltaNPC_.clear();
     diagDeltaNPC_.clear();
+
+    diagResidualNPC_.clear();
+    slopeResidualNPC_.clear();
+    diagResidualPlayer_ = 0.0f;
+    slopeResidualPlayer_ = 0.0f;
 }
 
 
@@ -703,6 +735,7 @@ void SpeedController::DoPostLoadCleanup() {
                 const float snapCur = currentDelta;
                 const float snapDiag = diagDelta_;
                 const bool snapJog = joggingMode_;
+                const float snapSlope = slopeDeltaPlayer_;
 
                 ClearSlopeDeltaFor(pc);
                 RevertDeltasFor(pc);
@@ -715,6 +748,10 @@ void SpeedController::DoPostLoadCleanup() {
                 {
                     const float cur = avo->GetActorValue(RE::ActorValue::kSpeedMult);
                     avo->ModActorValue(RE::ActorValue::kSpeedMult, base - cur);
+                }
+                if (std::fabs(snapSlope) > 1e-6f) {
+                    avo->ModActorValue(RE::ActorValue::kSpeedMult, snapSlope);
+                    slopeDeltaPlayer_ = snapSlope;
                 }
 
                 if (std::fabs(snapCur) > 1e-6f) {
@@ -754,6 +791,20 @@ void SpeedController::DoPostLoadCleanup() {
     });
 }
 
+bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a) {
+    if (!a) return false;
+
+    float x = 0.f, y = 0.f;
+    if (a == RE::PlayerCharacter::GetSingleton()) {
+        x = moveX_;
+        y = moveY_;
+    } else {
+        (void)TryGetMoveAxesFromGraph(a, x, y);
+    }
+    return UpdateDiagonalPenalty(a, x, y);
+}
+
+
 bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY) {
     if (!a) return false;
 
@@ -770,46 +821,34 @@ bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY) 
     if (!avo) return false;
 
     float& slot = DiagDeltaSlot(a);
-    if (std::fabs(slot) > 0.001f) {
-        avo->ModActorValue(RE::ActorValue::kSpeedMult, -slot);
-        slot = 0.0f;
-    }
-
-    if (f >= 0.999f) return false;
 
     const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
     const float floor = Settings::minFinalSpeedMult.load();
-    const float headroom = std::max(0.0f, curSM - floor);
+    const bool sprinting = IsSprintingByGraph(a);
 
-    float newDiag = headroom * (f - 1.0f);  // <= 0
+    const float curNoDiag = curSM - slot;
+    float headroom = std::max(0.0f, curNoDiag - floor);
 
-    if (IsSprintingByGraph(a)) {
-        // Make diagonal penalty less severe when sprinting
-        newDiag *= 0.5f;
+    float newDiag = 0.0f;
+    if (f < 0.999f) {
+        newDiag = headroom * (f - 1.0f);  // <= 0
+        if (sprinting) newDiag *= 0.5f;
+    } else {
+        newDiag = 0.0f;
     }
 
-    if (std::fabs(newDiag) > 0.001f) {
-        avo->ModActorValue(RE::ActorValue::kSpeedMult, newDiag);
-        slot = newDiag;
+    const float delta = newDiag - slot;
+
+    float& acc = DiagResidualSlot(a);
+    acc += delta;
+
+    static constexpr float kDiagGran = 5e-4f;
+    if (std::fabs(acc) >= kDiagGran) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, acc);
+        slot += acc;
+        acc = 0.0f;
         return true;
     }
-    return false;
-}
-
-bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a) {
-    if (!a) return false;
-
-    auto* pc = RE::PlayerCharacter::GetSingleton();
-    if (a == pc) {
-        return UpdateDiagonalPenalty(a, moveX_, moveY_);
-    }
-
-    float x = 0.f, y = 0.f;
-    if (TryGetMoveAxesFromGraph(a, x, y)) {
-        return UpdateDiagonalPenalty(a, x, y);
-    }
-
-    ClearDiagDeltaFor(a);
     return false;
 }
 
@@ -926,6 +965,33 @@ void SpeedController::Apply() {
     });
 }
 
+void SpeedController::RevertMovementDeltasFor(RE::Actor* a, bool clearSlope) {
+    if (!a) return;
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return;
+
+    // Movement-Delta
+    float& moveDelta = CurrentDeltaSlot(a);
+    if (std::fabs(moveDelta) > 1e-6f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -moveDelta);
+        moveDelta = 0.0f;
+    }
+
+    // Diagonal-Delta
+    float& diag = DiagDeltaSlot(a);
+    if (std::fabs(diag) > 1e-6f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -diag);
+        diag = 0.0f;
+    }
+
+    // Slope-Delta
+    if (clearSlope) {
+        ClearSlopeDeltaFor(a);
+    }
+
+    ForceSpeedRefresh(a);
+}
+
 void SpeedController::ApplyFor(RE::Actor* a) {
     if (!a) return;
 
@@ -963,7 +1029,8 @@ void SpeedController::ApplyFor(RE::Actor* a) {
 
         if (flip) {
             smoothing = false;
-            ForceSpeedRefresh(a);
+            // ForceSpeedRefresh(a);
+            RevertMovementDeltasFor(a);
         }
     }
 
@@ -1035,7 +1102,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
         ClearDiagDeltaFor(a);
     }
     UpdateSlopePenalty(a, dt);
-    ClampSpeedFloor(a);
+    ClampSpeedFloorTracked(a);
 }
 
 
@@ -1138,7 +1205,7 @@ void SpeedController::UpdateSlopeTickOnly() {
         lastSlopePlayerMs_ = now;
 
         UpdateSlopePenalty(pc, dt);
-        ClampSpeedFloor(pc);
+        ClampSpeedFloorTracked(pc);
     }
 
     // NPCs
@@ -1156,7 +1223,7 @@ void SpeedController::UpdateSlopeTickOnly() {
                 t = now;
 
                 UpdateSlopePenalty(a, dt);
-                ClampSpeedFloor(a);
+                ClampSpeedFloorTracked(a);
             }
         }
     }
@@ -1168,7 +1235,7 @@ void SpeedController::RevertDeltasFor(RE::Actor* a) {
     if (!avo) return;
 
     float& moveDelta = CurrentDeltaSlot(a);
-    if (std::fabs(moveDelta) > 0.001f) {
+    if (std::fabs(moveDelta) > 1e-6f) {
         avo->ModActorValue(RE::ActorValue::kSpeedMult, -moveDelta);
         moveDelta = 0.0f;
     }
@@ -1180,12 +1247,15 @@ void SpeedController::RevertDeltasFor(RE::Actor* a) {
     }
 
     float& diag = DiagDeltaSlot(a);
-    if (std::fabs(diag) > 0.001f) {
+    if (std::fabs(diag) > 1e-6f) {
         avo->ModActorValue(RE::ActorValue::kSpeedMult, -diag);
         diag = 0.0f;
     }
     ClearSlopeDeltaFor(a);
     ForceSpeedRefresh(a);
+
+    DiagResidualSlot(a) = 0.0f;
+    SlopeResidualSlot(a) = 0.0f;
 }
 
 bool SpeedController::TryGetMoveAxesFromGraph(const RE::Actor* a, float& outX, float& outY) const {
@@ -1223,10 +1293,11 @@ void SpeedController::ClearDiagDeltaFor(RE::Actor* a) {
     auto* avo = a->AsActorValueOwner();
     if (!avo) return;
     float& slot = DiagDeltaSlot(a);
-    if (std::fabs(slot) > 0.001f) {
+    if (std::fabs(slot) > 1e-6f) {
         avo->ModActorValue(RE::ActorValue::kSpeedMult, -slot);
         slot = 0.0f;
     }
+    DiagResidualSlot(a) = 0.0f;
 }
 
 std::deque<PathSample>& SpeedController::PathBuf(RE::Actor* a) {
@@ -1259,6 +1330,27 @@ void SpeedController::PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint
     const uint64_t maxAgeMs = static_cast<uint64_t>(std::max(0.f, Settings::slopeMaxHistorySec.load()) * 1000.f);
     while (!q.empty() && (nowMs - q.front().tMs) > maxAgeMs) {
         q.pop_front();
+    }
+}
+
+void SpeedController::ClampSpeedFloorTracked(RE::Actor* a) {
+    if (!a) return;
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return;
+
+    const float floor = Settings::minFinalSpeedMult.load();
+
+    float& moveSlot = CurrentDeltaSlot(a);
+    float& diagSlot = DiagDeltaSlot(a);
+    float& slopeSlot = SlopeDeltaSlot(a);
+
+    const float cur = avo->GetActorValue(RE::ActorValue::kSpeedMult);
+
+    const float eps = 1e-4f;
+    if (cur < floor - eps) {
+        const float need = floor - cur;
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, need);
+        moveSlot += need;
     }
 }
 
