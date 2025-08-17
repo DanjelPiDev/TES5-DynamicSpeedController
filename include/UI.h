@@ -18,6 +18,7 @@ namespace UI {
         inline std::string slopeTerrainHeader = FontAwesome::UnicodeToUtf8(0xe508) + " Slope / Terrain";
         inline std::string movementSpeedHeader = FontAwesome::UnicodeToUtf8(0xe552) + " Movement Speed Modifiers";
         inline std::string inputHeader = FontAwesome::UnicodeToUtf8(0xf11b) + " Input / Events";
+        inline std::string armorHeader = FontAwesome::UnicodeToUtf8(0xf553) + " Armor Weight Scaling";
 
         inline std::string specificLocationHeader = FontAwesome::UnicodeToUtf8(0xf3c5) + " Specific Locations (BGSLocation)";
         inline std::string typesLocationHeader = FontAwesome::UnicodeToUtf8(0xf59f) + " Location Types (BGSKeyword e.g. LocType*)";

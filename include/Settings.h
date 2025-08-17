@@ -79,6 +79,16 @@ struct Settings {
     static inline std::atomic<float> sprintAnimTau{0.10f};        // 100ms
     static inline std::atomic<float> sprintAnimRatePerSec{5.0f};  // max steps per second
 
+    // Armor stuff
+    static inline std::atomic<bool> armorAffectsMovement{false};
+    static inline std::atomic<bool> armorAffectsAttackSpeed{false};
+    static inline std::atomic<bool> useMaxArmorWeight{true};
+    static inline std::atomic<float> armorWeightPivot{20.0f};
+    static inline std::atomic<float> armorWeightSlopeSM{-1.0f};
+    static inline std::atomic<float> armorMoveMin{-60.0f};
+    static inline std::atomic<float> armorMoveMax{0.0f};
+    static inline std::atomic<float> armorWeightSlopeAtk{-0.010f};
+
     static inline std::atomic<int> eventDebounceMs{10};
 
     // Location stuff

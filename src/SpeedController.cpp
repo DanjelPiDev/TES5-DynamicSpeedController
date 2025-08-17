@@ -163,7 +163,7 @@ void SpeedController::UpdateSprintAnimRate(RE::Actor* a) {
         if (a == RE::PlayerCharacter::GetSingleton()) {
             const uint64_t now = NowMs();
             const uint64_t last = lastSprintMs_.load(std::memory_order_relaxed);
-            sprinting = (last != 0) && (now - last <= kSprintLatchMs);  // Latch wie bei CaseToDelta
+            sprinting = (last != 0) && (now - last <= kSprintLatchMs);
         }
     }
 
@@ -500,6 +500,11 @@ void SpeedController::UpdateAttackSpeed(RE::Actor* actor) {
                    (Settings::usePlayerScale ? (Settings::scaleSlope * (scale - 1.0f)) : 0.0f);
 
     target = std::max(Settings::minAttackMult.load(), std::min(Settings::maxAttackMult.load(), target));
+
+    if (Settings::armorAffectsAttackSpeed.load()) {
+        const float aw = ComputeArmorWeight(actor);
+        target += Settings::armorWeightSlopeAtk.load() * (aw - Settings::armorWeightPivot.load());
+    }
 
     auto* avo = actor->AsActorValueOwner();
     if (!avo) return;
@@ -918,6 +923,18 @@ float SpeedController::CaseToDelta(const RE::Actor* a) const {
         if (c != MoveCase::Combat || Settings::sprintAffectsCombat.load()) {
             base += Settings::increaseSprinting.load();
         }
+    }
+    if (Settings::armorAffectsMovement.load()) {
+        const float aw = ComputeArmorWeight(a);
+        float armDelta = Settings::armorWeightSlopeSM.load() * (aw - Settings::armorWeightPivot.load());
+        const float lo = Settings::armorMoveMin.load();
+        const float hi = Settings::armorMoveMax.load();
+        if (lo <= hi) {
+            armDelta = std::clamp(armDelta, lo, hi);
+        } else {
+            armDelta = std::clamp(armDelta, hi, lo);
+        }
+        base += armDelta;
     }
     return base;
 }
@@ -1376,6 +1393,32 @@ bool SpeedController::ComputePathSlopeDeg(RE::Actor* a, float lookbackUnits, flo
     return true;
 }
 
+float SpeedController::ComputeArmorWeight(const RE::Actor* a) const {
+    if (!a) return 0.0f;
+
+    float maxW = 0.0f, sumW = 0.0f;
+
+    auto* ac = const_cast<RE::Actor*>(a);
+
+    std::unordered_set<RE::FormID> seen;
+
+    for (std::uint32_t i = 0; i <= 31; ++i) {
+        const auto slot = static_cast<RE::BGSBipedObjectForm::BipedObjectSlot>(i);
+        RE::TESObjectARMO* armo = ac->GetWornArmor(slot, true);
+        if (!armo) continue;
+
+        const RE::FormID fid = armo->GetFormID();
+        if (!seen.insert(fid).second) continue;
+
+        const RE::TESBoundObject* bo = armo;
+        const float w = bo ? bo->GetWeight() : 0.0f;
+
+        sumW += w;
+        if (w > maxW) maxW = w;
+    }
+
+    return Settings::useMaxArmorWeight.load() ? maxW : sumW;
+}
 
 bool SpeedController::GetJoggingMode() const { return joggingMode_; }
 void SpeedController::SetJoggingMode(bool b) { joggingMode_ = b; }

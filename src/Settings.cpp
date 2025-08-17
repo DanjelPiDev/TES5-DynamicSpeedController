@@ -19,7 +19,7 @@ bool Settings::ParseFormSpec(const std::string& spec, std::string& plugin, std::
     plugin = spec.substr(0, pos);
     std::string idstr = spec.substr(pos + 1);
     try {
-        id = static_cast<std::uint32_t>(std::stoul(idstr, nullptr, 0));  // 0 => 0x... or dezimal
+        id = static_cast<std::uint32_t>(std::stoul(idstr, nullptr, 0));  // 0 => 0x... or decimal
         return true;
     } catch (...) {
         return false;
@@ -113,6 +113,15 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kSlopeMaxHistorySec"] = slopeMaxHistorySec.load();
     j["kSlopeMinXYPerFrame"] = slopeMinXYPerFrame.load();
     j["kSlopeMedianN"] = slopeMedianN.load();
+
+    j["kArmorAffectsMovement"] = armorAffectsMovement.load();
+    j["kArmorAffectsAttackSpeed"] = armorAffectsAttackSpeed.load();
+    j["kUseMaxArmorWeight"] = useMaxArmorWeight.load();
+    j["kArmorWeightPivot"] = armorWeightPivot.load();
+    j["kArmorWeightSlopeSM"] = armorWeightSlopeSM.load();
+    j["kArmorMoveMin"] = armorMoveMin.load();
+    j["kArmorMoveMax"] = armorMoveMax.load();
+    j["kArmorWeightSlopeAtk"] = armorWeightSlopeAtk.load();
 
     std::ofstream out(file);
     if (!out.is_open()) return false;
@@ -353,6 +362,39 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
         int n = j["kSlopeMedianN"].get<int>();
         slopeMedianN = std::clamp(n, 1, 10);
     }
+    if (j.contains("kArmorAffectsMovement")) {
+        armorAffectsMovement = j["kArmorAffectsMovement"].get<bool>();
+    }
+    if (j.contains("kArmorAffectsAttackSpeed")) {
+        armorAffectsAttackSpeed = j["kArmorAffectsAttackSpeed"].get<bool>();
+    }
+    if (j.contains("kUseMaxArmorWeight")) {
+        useMaxArmorWeight = j["kUseMaxArmorWeight"].get<bool>();
+    }
+    if (j.contains("kArmorWeightPivot")) {
+        float v = j["kArmorWeightPivot"].get<float>();
+        armorWeightPivot = std::max(0.0f, v);
+    }
+    if (j.contains("kArmorWeightSlopeSM")) {
+        float v = j["kArmorWeightSlopeSM"].get<float>();
+        armorWeightSlopeSM = std::clamp(v, -10.0f, 10.0f);
+    }
+    if (j.contains("kArmorMoveMin")) {
+        armorMoveMin = j["kArmorMoveMin"].get<float>();
+    }
+    if (j.contains("kArmorMoveMax")) {
+        armorMoveMax = j["kArmorMoveMax"].get<float>();
+    }
+    if (armorMoveMin > armorMoveMax) {
+        float a = armorMoveMin.load(), b = armorMoveMax.load();
+        armorMoveMin = std::min(a, b);
+        armorMoveMax = std::max(a, b);
+    }
+    if (j.contains("kArmorWeightSlopeAtk")) {
+        float v = j["kArmorWeightSlopeAtk"].get<float>();
+        armorWeightSlopeAtk = std::clamp(v, -1.0f, 1.0f);
+    }
+
 
     return true;
 }

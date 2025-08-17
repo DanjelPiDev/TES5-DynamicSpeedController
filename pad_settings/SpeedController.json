@@ -40,8 +40,6 @@
   "kSprintAnimTau": 0.1,
   "kSprintAnimRatePerSec": 5.0,
   "kEventDebounceMs": 10,
-  "kUseMaxArmorWeight": true,
-  "kArmorWeightSlots": [ "Head", "Body", "Hands", "Feet", "Shield" ],
   "kArmorWeightPivot": 20.0,
   "kArmorWeightSlope": -0.015,
   "kArmorMinSpeedMult": 60.0,
@@ -62,5 +60,8 @@
   "kSlopeLookbackUnits": 96.0,
   "kSlopeMaxHistorySec": 1.0,
   "kSlopeMinXYPerFrame": 0.25,
-  "kSlopeMedianN": 3
+  "kSlopeMedianN": 3,
+  "kArmorAffectsMovement": false,
+  "kArmorWeightSlopeSM": -1.0,
+  "kArmorMoveMin": -60.0
 }

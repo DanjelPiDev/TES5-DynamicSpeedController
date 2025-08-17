@@ -234,6 +234,51 @@ void __stdcall UI::SpeedConfig::Render() {
     FontAwesome::Pop();
 
     ImGui::Separator();
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(armorHeader.c_str())) {
+        bool m = Settings::armorAffectsMovement.load();
+        if (ImGui::Checkbox("Affect Movement by Armor Weight", &m)) {
+            Settings::armorAffectsMovement.store(m);
+        }
+
+        bool useMax = Settings::useMaxArmorWeight.load();
+        if (ImGui::Checkbox("Use Max Equipped Armor Weight (vs Sum)", &useMax)) {
+            Settings::useMaxArmorWeight.store(useMax);
+        }
+
+        float ap = Settings::armorWeightPivot.load();
+        if (ImGui::SliderFloat("Armor Weight Pivot", &ap, 0.0f, 80.0f, "%.1f")) {
+            Settings::armorWeightPivot.store(ap);
+        }
+
+        float smSlope = Settings::armorWeightSlopeSM.load();
+        if (ImGui::SliderFloat("Armor -> SpeedMult Slope (per weight)", &smSlope, -5.0f, 5.0f, "%.2f")) {
+            Settings::armorWeightSlopeSM.store(smSlope);
+        }
+
+        float lo = Settings::armorMoveMin.load();
+        float hi = Settings::armorMoveMax.load();
+        if (ImGui::DragFloat2("Clamp Movement Delta [min, max]", &lo, 0.1f, -200.0f, 200.0f, "%.1f")) {
+            Settings::armorMoveMin.store(lo);
+            Settings::armorMoveMax.store(hi);
+        }
+
+        ImGui::Separator();
+        bool aatk = Settings::armorAffectsAttackSpeed.load();
+        if (ImGui::Checkbox("Also affect Attack Speed", &aatk)) {
+            Settings::armorAffectsAttackSpeed.store(aatk);
+        }
+
+        float atkSlope = Settings::armorWeightSlopeAtk.load();
+        if (ImGui::SliderFloat("Armor -> Attack Slope (per weight)", &atkSlope, -0.20f, 0.20f, "%.3f")) {
+            Settings::armorWeightSlopeAtk.store(atkSlope);
+        }
+
+        ImGui::TextDisabled("Hint: Negative slopes = heavier => slower.");
+    }
+    FontAwesome::Pop();
+
+    ImGui::Separator();
 
     FontAwesome::PushSolid();
     if (ImGui::CollapsingHeader(slopeTerrainHeader.c_str())) {
@@ -572,7 +617,7 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
                 }
             }
         } else {
-            ImGui::TextDisabled("Tip: Click 'Use Current Location' to list its keywords (LocType*, etc.).");
+            ImGui::TextDisabled("Hint: Click 'Use Current Location' to list its keywords (LocType*, etc.).");
         }
 
         ImGui::SliderFloat("Value (reduce)", &typeVal, 0.f, 100.f, "%.1f");

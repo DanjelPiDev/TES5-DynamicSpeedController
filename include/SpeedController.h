@@ -219,7 +219,9 @@ private:
     bool TryGetMoveAxesFromGraph(const RE::Actor* a, float& outX, float& outY) const;
 
     bool UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY);
-    bool UpdateDiagonalPenalty(RE::Actor* a); 
+    bool UpdateDiagonalPenalty(RE::Actor* a);
+
+    float ComputeArmorWeight(const RE::Actor* a) const;
 
     static inline uint64_t NowMs() {
         using namespace std::chrono;
