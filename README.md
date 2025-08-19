@@ -11,7 +11,6 @@ No ESP and no scripts in your save; it is just a DLL with a JSON config. Optiona
 
 ## Table of Contents
 
-- [Why](#why)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -25,12 +24,6 @@ No ESP and no scripts in your save; it is just a DLL with a JSON config. Optiona
 - [Uninstall](#uninstall)
 - [Build From Source](#build-from-source)
 - [Roadmap](#roadmap)
-
----
-
-## Why
-
-Skyrim combines forward and sideways input in a way that makes diagonal movement faster than intended. This plugin reads the movement axes from the animation graph and applies a minimal, state-aware correction that preserves your configured minimum speed. The correction can be lighter while sprinting and can be enabled for NPCs.
 
 ---
 
@@ -222,7 +215,7 @@ kEventDebounceMs reduces spam from rapid input changes.
 
 - Controller thumbstick axes are filtered with a dead zone and feed the diagonal correction.
 
-- The plugin nudges a harmless actor value to trigger Skyrim’s movement recompute, then compensates it so gameplay values stay intact. This avoids stuck movement after loads or rapid state changes.
+- The plugin nudges a harmless actor value to trigger Skyrim's movement recompute, then compensates it so gameplay values stay intact. This avoids stuck movement after loads or rapid state changes.
 
 ## Troubleshooting
 **Inventory weight looks off or movement feels stuck after a load**
@@ -232,7 +225,7 @@ The plugin restores a safe baseline and performs a refresh. If needed, open the 
 Ensure the diagonal fix is enabled for the player. If your reductions are very strong, raise kMinFinalSpeedMult so the fix has headroom.
 
 **Attack speed does not change**
-Verify attack scaling is enabled and, if using “only when drawn”, that your weapon is drawn. Re-equip to force an update.
+Verify attack scaling is enabled and, if using Â“only when drawnÂ”, that your weapon is drawn. Re-equip to force an update.
 
 ## Uninstall
 Delete the DLL and the JSON. The plugin reverts its deltas and leaves no scripts in your save.
