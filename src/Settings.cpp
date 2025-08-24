@@ -122,6 +122,7 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kArmorMoveMin"] = armorMoveMin.load();
     j["kArmorMoveMax"] = armorMoveMax.load();
     j["kArmorWeightSlopeAtk"] = armorWeightSlopeAtk.load();
+    j["kNpcRadius"] = npcRadius.load();
 
     std::ofstream out(file);
     if (!out.is_open()) return false;
@@ -394,7 +395,11 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
         float v = j["kArmorWeightSlopeAtk"].get<float>();
         armorWeightSlopeAtk = std::clamp(v, -1.0f, 1.0f);
     }
-
+    if (j.contains("kNpcRadius")) {
+        float r = j["kNpcRadius"].get<int>();
+        // Maximum radius is 4096 * 4 = 16384 (max load distance for NPCs)
+        npcRadius = static_cast<int>(std::clamp(r, 0.0f, 4096.0f * 4.0f));
+    }
 
     return true;
 }

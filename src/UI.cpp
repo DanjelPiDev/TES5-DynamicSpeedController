@@ -115,6 +115,15 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
     }
 
+    int r = Settings::npcRadius.load();
+    if (ImGui::SliderInt("NPC Radius (0 = All)", &r, 0, 16384)) {
+        Settings::npcRadius.store(r);
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            SpeedController::GetSingleton()->RefreshNow();
+        }
+    }
+    ImGui::TextDisabled("Hint: NPCs outside the radius being automatically reverted to vanilla Skyrim movements.");
+
     bool ignoreBeast = Settings::ignoreBeastForms.load();
     if (ImGui::Checkbox("Ignore in Werewolf/Vampire form?", &ignoreBeast)) {
         Settings::ignoreBeastForms.store(ignoreBeast);

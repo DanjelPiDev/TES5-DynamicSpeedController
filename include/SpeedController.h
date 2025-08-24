@@ -166,6 +166,9 @@ private:
     static constexpr uint64_t kSprintLatchMs = 150;
     std::string sprintUserEvent_ = "Sprint";
 
+    std::atomic<uint64_t> lastRefreshPlayerMs_{0};
+    std::unordered_map<RE::FormID, uint64_t> lastRefreshNPCMs_;
+
     std::chrono::steady_clock::time_point lastToggle_{};
     std::chrono::milliseconds toggleCooldown_{150};
 
@@ -183,7 +186,10 @@ private:
     void RevertMovementDeltasFor(RE::Actor* a, bool clearSlope = true);
     float& SlopeDeltaSlot(RE::Actor* a);
     void ClearSlopeDeltaFor(RE::Actor* a);
+    void ClearNPCState(std::uint32_t id);
+    void ClearNPCTracking(RE::Actor* a);
     bool UpdateSlopePenalty(RE::Actor* a, float dt);
+    void UpdateSlopeTickNPCsOnly();
     void UpdateSlopeTickOnly();
 
     void UpdateSprintAnimRate(RE::Actor* a);
@@ -213,7 +219,7 @@ private:
 
     static bool IsInBeastForm(const RE::Actor* a);
     static void ModSpeedMult(RE::Actor* actor, float delta);
-    void ForceSpeedRefresh(RE::Actor* actor);
+    bool ForceSpeedRefresh(RE::Actor* actor);
     static bool IsWeaponDrawnByState(const RE::Actor* a);
     static bool IsSprintingByGraph(const RE::Actor* a);
     bool IsSprintingLatched(const RE::Actor* a) const;
