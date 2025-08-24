@@ -109,21 +109,6 @@ void UI::Register() {
 void __stdcall UI::SpeedConfig::RenderGeneral() {
     ImGui::Text("General Speed Modifiers");
 
-    bool affectNPCs = Settings::enableSpeedScalingForNPCs.load();
-    if (ImGui::Checkbox("Affect NPCs too?", &affectNPCs)) {
-        Settings::enableSpeedScalingForNPCs.store(affectNPCs);
-        if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
-    }
-
-    int r = Settings::npcRadius.load();
-    if (ImGui::SliderInt("NPC Radius (0 = All)", &r, 0, 16384)) {
-        Settings::npcRadius.store(r);
-        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
-            SpeedController::GetSingleton()->RefreshNow();
-        }
-    }
-    ImGui::TextDisabled("Hint: NPCs outside the radius being automatically reverted to vanilla Skyrim movements.");
-
     bool ignoreBeast = Settings::ignoreBeastForms.load();
     if (ImGui::Checkbox("Ignore in Werewolf/Vampire form?", &ignoreBeast)) {
         Settings::ignoreBeastForms.store(ignoreBeast);
@@ -132,59 +117,94 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
         }
     }
 
-    ImGui::Separator();
-    ImGui::Text("Fixes");
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(npcsHeader.c_str())) {
+        bool affectNPCs = Settings::enableSpeedScalingForNPCs.load();
+        if (ImGui::Checkbox("Affect NPCs too?", &affectNPCs)) {
+            Settings::enableSpeedScalingForNPCs.store(affectNPCs);
+            if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+        }
 
-    bool dfix = Settings::enableDiagonalSpeedFix.load();
-    if (ImGui::Checkbox("Diagonal Speed Fix (Player)", &dfix)) {
-        Settings::enableDiagonalSpeedFix.store(dfix);
+        int r = Settings::npcRadius.load();
+        if (ImGui::SliderInt("NPC Radius (0 = All)", &r, 0, 16384)) {
+            Settings::npcRadius.store(r);
+            if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+                SpeedController::GetSingleton()->RefreshNow();
+            }
+        }
+        ImGui::TextDisabled("Hint: NPCs outside the radius being automatically reverted to vanilla Skyrim movements.");
+
+        float npcPct = Settings::npcPercentOfPlayer.load();
+        if (ImGui::SliderFloat("NPC % of Player effect", &npcPct, 0.0f, 200.0f, "%.0f%%")) {
+            Settings::npcPercentOfPlayer.store(npcPct);
+            if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+                SpeedController::GetSingleton()->RefreshNow();
+            }
+        }
+        ImGui::TextDisabled("NPCs apply only this percent of the player's movement modifiers.");
     }
-
-    bool dfixNPC = Settings::enableDiagonalSpeedFixForNPCs.load();
-    if (ImGui::Checkbox("Diagonal Speed Fix for NPCs", &dfixNPC)) {
-        Settings::enableDiagonalSpeedFixForNPCs.store(dfixNPC);
-    }
+    FontAwesome::Pop();
 
     ImGui::Separator();
-    ImGui::Text("Smoothing / Acceleration");
+
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(fixesHeader.c_str())) {
+        bool dfix = Settings::enableDiagonalSpeedFix.load();
+        if (ImGui::Checkbox("Diagonal Speed Fix (Player)", &dfix)) {
+            Settings::enableDiagonalSpeedFix.store(dfix);
+        }
+
+        bool dfixNPC = Settings::enableDiagonalSpeedFixForNPCs.load();
+        if (ImGui::Checkbox("Diagonal Speed Fix for NPCs", &dfixNPC)) {
+            Settings::enableDiagonalSpeedFixForNPCs.store(dfixNPC);
+        }
+    }
+    FontAwesome::Pop();
+
+    ImGui::Separator();
+
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(smootingAccelerationHeader.c_str())) {
+        int eventDebounceMs = Settings::eventDebounceMs.load();
+        if (ImGui::SliderInt("Event Debounce (ms)", &eventDebounceMs, 1, 100)) {
+            Settings::eventDebounceMs.store(eventDebounceMs);
+        }
+
+        bool smooth = Settings::smoothingEnabled.load();
+        if (ImGui::Checkbox("Enable smoothing", &smooth)) {
+            Settings::smoothingEnabled.store(smooth);
+        }
+
+        bool smNpc = Settings::smoothingAffectsNPCs.load();
+        if (ImGui::Checkbox("Affects NPCs too?", &smNpc)) {
+            Settings::smoothingAffectsNPCs.store(smNpc);
+        }
+        ImGui::TextDisabled("This is separated from NPCs toggle because NPCs are less sensitive to sudden changes.");
+
+        bool bypass = Settings::smoothingBypassOnStateChange.load();
+        if (ImGui::Checkbox("Bypass on major state change (sprint/drawn/sneak)", &bypass)) {
+            Settings::smoothingBypassOnStateChange.store(bypass);
+        }
+
+        int mode = static_cast<int>(Settings::smoothingMode);
+        const char* modes[] = {"Exponential", "RateLimit", "ExpoThenRate"};
+        if (ImGui::Combo("Mode", &mode, modes, IM_ARRAYSIZE(modes))) {
+            Settings::smoothingMode = static_cast<Settings::SmoothingMode>(mode);
+        }
+
+        float hl = Settings::smoothingHalfLifeMs.load();
+        if (ImGui::SliderFloat("Half-life (ms)", &hl, 1.0f, 2000.0f, "%.0f")) {
+            Settings::smoothingHalfLifeMs.store(hl);
+        }
+
+        float maxrate = Settings::smoothingMaxChangePerSecond.load();
+        if (ImGui::SliderFloat("Max Delta per second", &maxrate, 1.0f, 300.0f, "%.0f")) {
+            Settings::smoothingMaxChangePerSecond.store(maxrate);
+        }
+    }
+    FontAwesome::Pop();
 
     // kEventDebounceMs
-    int eventDebounceMs = Settings::eventDebounceMs.load();
-    if (ImGui::SliderInt("Event Debounce (ms)", &eventDebounceMs, 1, 100)) {
-        Settings::eventDebounceMs.store(eventDebounceMs);
-    }
-
-    bool smooth = Settings::smoothingEnabled.load();
-    if (ImGui::Checkbox("Enable smoothing", &smooth)) {
-        Settings::smoothingEnabled.store(smooth);
-    }
-
-    bool smNpc = Settings::smoothingAffectsNPCs.load();
-    if (ImGui::Checkbox("Affects NPCs", &smNpc)) {
-        Settings::smoothingAffectsNPCs.store(smNpc);
-    }
-
-    bool bypass = Settings::smoothingBypassOnStateChange.load();
-    if (ImGui::Checkbox("Bypass on major state change (sprint/drawn/sneak)", &bypass)) {
-        Settings::smoothingBypassOnStateChange.store(bypass);
-    }
-
-    int mode = static_cast<int>(Settings::smoothingMode);
-    const char* modes[] = {"Exponential", "RateLimit", "ExpoThenRate"};
-    if (ImGui::Combo("Mode", &mode, modes, IM_ARRAYSIZE(modes))) {
-        Settings::smoothingMode = static_cast<Settings::SmoothingMode>(mode);
-    }
-
-    float hl = Settings::smoothingHalfLifeMs.load();
-    if (ImGui::SliderFloat("Half-life (ms)", &hl, 1.0f, 2000.0f, "%.0f")) {
-        Settings::smoothingHalfLifeMs.store(hl);
-    }
-
-    float maxrate = Settings::smoothingMaxChangePerSecond.load();
-    if (ImGui::SliderFloat("Max Delta per second", &maxrate, 1.0f, 300.0f, "%.0f")) {
-        Settings::smoothingMaxChangePerSecond.store(maxrate);
-    }
-
     ImGui::Separator();
 
     FontAwesome::PushSolid();

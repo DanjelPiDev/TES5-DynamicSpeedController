@@ -14,6 +14,10 @@ namespace UI {
 
         inline std::string saveIcon = FontAwesome::UnicodeToUtf8(0xf0c7) + " Save Settings";
 
+        inline std::string smootingAccelerationHeader = FontAwesome::UnicodeToUtf8(0xf624) + " Smoothing / Acceleration";
+        inline std::string fixesHeader = FontAwesome::UnicodeToUtf8(0xf54a) + " Fixes";
+        inline std::string npcsHeader = FontAwesome::UnicodeToUtf8(0xf544) + " NPC Settings";
+
         inline std::string animationsHeader = FontAwesome::UnicodeToUtf8(0xf21d) + " Animations";
         inline std::string slopeTerrainHeader = FontAwesome::UnicodeToUtf8(0xe508) + " Slope / Terrain";
         inline std::string movementSpeedHeader = FontAwesome::UnicodeToUtf8(0xe552) + " Movement Speed Modifiers";

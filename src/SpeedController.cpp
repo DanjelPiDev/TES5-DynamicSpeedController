@@ -490,11 +490,6 @@ void SpeedController::ClearNPCState(std::uint32_t id) {
     pathNPC_.erase(id);
 }
 
-void SpeedController::ClearNPCTracking(RE::Actor* a) {
-    if (!a) return;
-    ClearNPCState(GetID(a));
-}
-
 float SpeedController::ComputeEquippedWeight(const RE::Actor* a) const {
     if (!a) return 0.0f;
     auto getWeight = [](RE::TESForm* f) -> float {
@@ -1065,7 +1060,13 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     }
 
     const auto id = GetID(a);
-    const float want = CaseToDelta(a);
+    float want = CaseToDelta(a);
+
+    if (!isPlayer) {
+        const float pct = std::clamp(Settings::npcPercentOfPlayer.load(), 0.0f, 200.0f) * 0.01f;
+        want *= pct;
+    }
+
     float& cur = isPlayer ? currentDelta : currentDeltaNPC_[id];
     uint64_t& t = isPlayer ? lastApplyPlayerMs_ : lastApplyNPCMs_[id];
 

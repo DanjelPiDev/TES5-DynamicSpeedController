@@ -187,7 +187,6 @@ private:
     float& SlopeDeltaSlot(RE::Actor* a);
     void ClearSlopeDeltaFor(RE::Actor* a);
     void ClearNPCState(std::uint32_t id);
-    void ClearNPCTracking(RE::Actor* a);
     bool UpdateSlopePenalty(RE::Actor* a, float dt);
     void UpdateSlopeTickNPCsOnly();
     void UpdateSlopeTickOnly();
