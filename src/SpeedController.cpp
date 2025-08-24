@@ -590,7 +590,7 @@ void SpeedController::StartHeartbeat() {
                         this->ForceSpeedRefresh(pc);
                     }
 
-                    const bool curSprint = IsSprintingByGraph(pc);
+                    const bool curSprint = IsSprintingLatched(pc);
                     if (curSprint != prevSprint) {
                         if (!curSprint) {
                             pc->SetGraphVariableFloat("fAnimSpeedMult", 1.0f);
@@ -829,7 +829,7 @@ bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY) 
 
     const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
     const float floor = Settings::minFinalSpeedMult.load();
-    const bool sprinting = IsSprintingByGraph(a);
+    const bool sprinting = IsSprintingLatched(a);
 
     const float curNoDiag = curSM - slot;
     float headroom = std::max(0.0f, curNoDiag - floor);
@@ -909,15 +909,7 @@ float SpeedController::CaseToDelta(const RE::Actor* a) const {
     }
     done_loc:;
 
-    bool sprint = IsSprintingByGraph(a);
-    if (!sprint) {
-        auto* pc = RE::PlayerCharacter::GetSingleton();
-        if (a == pc) {
-            const uint64_t now = NowMs();
-            const uint64_t last = lastSprintMs_.load(std::memory_order_relaxed);
-            sprint = (last != 0) && (now - last <= kSprintLatchMs);
-        }
-    }
+    bool sprint = IsSprintingLatched(a);
     if (sprint) {
         const MoveCase c = ComputeCase(a);
         if (c != MoveCase::Combat || Settings::sprintAffectsCombat.load()) {
@@ -1031,24 +1023,39 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     }
     t = now;
 
-    bool smoothing = Settings::smoothingEnabled.load() && (isPlayer || Settings::smoothingAffectsNPCs.load());
+        bool smoothing = Settings::smoothingEnabled.load() && (isPlayer || Settings::smoothingAffectsNPCs.load());
 
-    if (smoothing && isPlayer && Settings::smoothingBypassOnStateChange.load()) {
-        const bool sprinting = IsSprintingByGraph(a);
-        const bool sneaking = a->IsSneaking();
-        const bool drawn = IsWeaponDrawnByState(a);
+    // Einheitliche Flip-Logik: Diagonal immer invalidieren; optional Smoothing-Bypass.
+    const bool curSprint = IsSprintingLatched(a);
+    const bool curSneak = a->IsSneaking();
+    const bool curDrawn = IsWeaponDrawnByState(a);
+    bool flip = false;
 
-        const bool flip =
-            (sprinting != prevPlayerSprinting_) || (sneaking != prevPlayerSneak_) || (drawn != prevPlayerDrawn_);
-        prevPlayerSprinting_ = sprinting;
-        prevPlayerSneak_ = sneaking;
-        prevPlayerDrawn_ = drawn;
+    if (isPlayer) {
+        flip = (curSprint != prevPlayerSprinting_) || (curSneak != prevPlayerSneak_) || (curDrawn != prevPlayerDrawn_);
+        prevPlayerSprinting_ = curSprint;
+        prevPlayerSneak_ = curSneak;
+        prevPlayerDrawn_ = curDrawn;
+    } else {
+        auto id = a->GetFormID();
+        bool& pS = prevNPCSprinting_[id];
+        bool& pN = prevNPCSneak_[id];
+        bool& pD = prevNPCDrawn_[id];
+        flip = (curSprint != pS) || (curSneak != pN) || (curDrawn != pD);
+        pS = curSprint;
+        pN = curSneak;
+        pD = curDrawn;
+    }
 
-        if (flip) {
+    if (flip) {
+        // Diagonal-Delta sofort verwerfen, damit Headroom/Clamp exakt passt.
+        ClearDiagDeltaFor(const_cast<RE::Actor*>(a));
+        // Optional: Smoothing-Bypass (für Player ODER NPCs – konsistent)
+        if (Settings::smoothingBypassOnStateChange.load() && smoothing) {
             smoothing = false;
-            // ForceSpeedRefresh(a);
-            RevertMovementDeltasFor(a);
+            RevertMovementDeltasFor(a, /*clearSlope*/ false);
         }
+        ForceSpeedRefresh(a);
     }
 
     float newDelta = want;
@@ -1074,7 +1081,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
         float predictedDiag = 0.0f;
         if (wantDiag) {
             float x = 0.f, y = 0.f;
-            bool sprinting = IsSprintingByGraph(a);
+            const bool sprinting = IsSprintingLatched(a);
             if (isPlayer) {
                 x = moveX_;
                 y = moveY_;
@@ -1118,7 +1125,14 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     } else {
         ClearDiagDeltaFor(a);
     }
-    UpdateSlopePenalty(a, dt);
+    const bool slopeChanged = UpdateSlopePenalty(a, dt);
+    if (slopeChanged) {
+        if (a == RE::PlayerCharacter::GetSingleton()) {
+            pendingRefresh_.store(true, std::memory_order_relaxed);
+        } else {
+            ForceSpeedRefresh(a);
+        }
+    }
     ClampSpeedFloorTracked(a);
 }
 
@@ -1221,7 +1235,10 @@ void SpeedController::UpdateSlopeTickOnly() {
         float dt = (lastSlopePlayerMs_ == 0) ? (1.0f / 60.0f) : std::max(0.0f, (now - lastSlopePlayerMs_) / 1000.0f);
         lastSlopePlayerMs_ = now;
 
-        UpdateSlopePenalty(pc, dt);
+        bool pChanged = UpdateSlopePenalty(pc, dt);
+        if (pChanged) {
+            pendingRefresh_.store(true, std::memory_order_relaxed);
+        }
         ClampSpeedFloorTracked(pc);
     }
 
@@ -1239,7 +1256,10 @@ void SpeedController::UpdateSlopeTickOnly() {
                 float dt = (t == 0) ? (1.0f / 60.0f) : std::max(0.0f, (now - t) / 1000.0f);
                 t = now;
 
-                UpdateSlopePenalty(a, dt);
+                bool aChanged = UpdateSlopePenalty(a, dt);
+                if (aChanged) {
+                    ForceSpeedRefresh(a);
+                }
                 ClampSpeedFloorTracked(a);
             }
         }
@@ -1326,6 +1346,18 @@ std::deque<PathSample>& SpeedController::PathBuf(RE::Actor* a) {
 void SpeedController::ClearPathFor(RE::Actor* a) {
     auto& q = PathBuf(a);
     q.clear();
+}
+
+bool SpeedController::IsSprintingLatched(const RE::Actor* a) const {
+    if (!a) return false;
+    if (IsSprintingByGraph(a)) return true;
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) {
+        const uint64_t now = NowMs();
+        const uint64_t last = lastSprintMs_.load(std::memory_order_relaxed);
+        if (last != 0 && (now - last) <= kSprintLatchMs) return true;
+    }
+    return false;
 }
 
 void SpeedController::PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint64_t nowMs) {

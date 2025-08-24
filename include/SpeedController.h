@@ -136,6 +136,10 @@ private:
     bool prevPlayerSneak_ = false;
     bool prevPlayerDrawn_ = false;
 
+    std::unordered_map<std::uint32_t, bool> prevNPCSprinting_;
+    std::unordered_map<std::uint32_t, bool> prevNPCSneak_;
+    std::unordered_map<std::uint32_t, bool> prevNPCDrawn_;
+
     // Movement speed (To fix the diagonal speed issue of skyrim)
     float moveX_ = 0.0f;  // -1 ... +1  (left/right)
     float moveY_ = 0.0f;  // -1 ... +1  (forward/backward)
@@ -212,6 +216,7 @@ private:
     void ForceSpeedRefresh(RE::Actor* actor);
     static bool IsWeaponDrawnByState(const RE::Actor* a);
     static bool IsSprintingByGraph(const RE::Actor* a);
+    bool IsSprintingLatched(const RE::Actor* a) const;
 
     float& DiagDeltaSlot(RE::Actor* a);
     void ClearDiagDeltaFor(RE::Actor* a);

@@ -51,6 +51,7 @@
       "vendor": {
         "microsoft.com/VisualStudioSettings/CMake/1.0": {
           "intelliSenseMode": "windows-msvc-x64",
+          "languageStandard": "c++23",
           "enableMicrosoftCodeAnalysis": true,
           "enableClangTidyCodeAnalysis": true
         }
@@ -68,6 +69,7 @@
       "displayName": "Release",
       "description": "Optimized release build.",
       "generator": "Ninja",
+      "toolset": "v143",
       "binaryDir": "${sourceDir}/build/release-msvc",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": {
