@@ -41,7 +41,7 @@ struct Settings {
 
     static inline std::atomic<bool> enableSpeedScalingForNPCs{false};
     inline static std::atomic<bool> ignoreBeastForms{true};
-    inline static std::atomic<bool> enableDiagonalSpeedFix{true};
+    inline static std::atomic<bool> enableDiagonalSpeedFix{false};
     inline static std::atomic<bool> enableDiagonalSpeedFixForNPCs{false};
 
     static inline std::atomic<float> reduceOutOfCombat{45.0f};
@@ -90,6 +90,8 @@ struct Settings {
     static inline std::atomic<float> armorWeightSlopeAtk{-0.010f};
 
     static inline std::atomic<int> eventDebounceMs{10};
+    static inline std::atomic<int> npcRadius{2048};  // Max distance for NPCs is 16384, 0 = All NPCs (Disable radius check)
+    static inline std::atomic<float> npcPercentOfPlayer{50.0f};  // NPCs move at least this percent of player speed, because NPCs are slower than players
 
     // Location stuff
     static bool ParseFormSpec(const std::string& spec, std::string& plugin, std::uint32_t& id);
