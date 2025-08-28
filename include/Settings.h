@@ -90,7 +90,7 @@ struct Settings {
     static inline std::atomic<float> armorWeightSlopeAtk{-0.010f};
 
     static inline std::atomic<int> eventDebounceMs{10};
-    static inline std::atomic<int> npcRadius{512};  // Max distance for NPCs is 16384, 0 = All NPCs (Disable radius check)
+    static inline std::atomic<int> npcRadius{2048};  // Max distance for NPCs is 16384, 0 = All NPCs (Disable radius check)
     static inline std::atomic<float> npcPercentOfPlayer{50.0f};  // NPCs move at least this percent of player speed, because NPCs are slower than players
 
     // Location stuff

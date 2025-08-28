@@ -116,7 +116,7 @@ namespace {
         if (a == pc) return true;
 
         const int r = Settings::npcRadius.load();
-        if (r <= 0) return true;  // 0 = alle NPCs
+        if (r <= 0) return true;
 
         const auto ap = a->GetPosition();
         const auto pp = pc->GetPosition();
@@ -1081,7 +1081,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
 
         bool smoothing = Settings::smoothingEnabled.load() && (isPlayer || Settings::smoothingAffectsNPCs.load());
 
-    // Einheitliche Flip-Logik: Diagonal immer invalidieren; optional Smoothing-Bypass.
+    // Flip-Logic: Always invalidate diagonal penalty
     const bool curSprint = IsSprintingLatched(a);
     const bool curSneak = a->IsSneaking();
     const bool curDrawn = IsWeaponDrawnByState(a);
@@ -1104,12 +1104,11 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     }
 
     if (flip) {
-        // Diagonal-Delta sofort verwerfen, damit Headroom/Clamp exakt passt.
+        // immediately reject Diagonal-Delta, so Headroom/Clamp fits exactly
         ClearDiagDeltaFor(const_cast<RE::Actor*>(a));
-        // Optional: Smoothing-Bypass (für Player ODER NPCs – konsistent)
         if (Settings::smoothingBypassOnStateChange.load() && smoothing) {
             smoothing = false;
-            RevertMovementDeltasFor(a, /*clearSlope*/ false);
+            RevertMovementDeltasFor(a, false);
         }
         ForceSpeedRefresh(a);
     }

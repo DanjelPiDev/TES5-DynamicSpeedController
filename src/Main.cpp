@@ -52,7 +52,7 @@ void OnLoad(SKSE::SerializationInterface* intfc) {
         float applied = 0.0f;
         float diag = 0.0f;
         float baseSM = NAN;
-        float slope = 0.0f;  // v4 neu
+        float slope = 0.0f;  // v4
 
         std::size_t bytesRead = 0;
 

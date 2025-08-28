@@ -142,6 +142,7 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
             }
         }
         ImGui::TextDisabled("NPCs apply only this percent of the player's movement modifiers.");
+        ImGui::TextDisabled("This is to account for NPCs being generally slower than players.");
     }
     FontAwesome::Pop();
 
@@ -154,9 +155,14 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
             Settings::enableDiagonalSpeedFix.store(dfix);
         }
 
+        bool affectNPCs = Settings::enableSpeedScalingForNPCs.load();
         bool dfixNPC = Settings::enableDiagonalSpeedFixForNPCs.load();
-        if (ImGui::Checkbox("Diagonal Speed Fix for NPCs", &dfixNPC)) {
-            Settings::enableDiagonalSpeedFixForNPCs.store(dfixNPC);
+        if (!affectNPCs) {
+            ImGui::TextDisabled("Enable 'Affect NPCs too?' in General Settings to modify NPC diagonal-fix settings.");
+        } else {
+            if (ImGui::Checkbox("Diagonal Speed Fix for NPCs", &dfixNPC)) {
+                Settings::enableDiagonalSpeedFixForNPCs.store(dfixNPC);
+            }
         }
     }
     FontAwesome::Pop();
@@ -312,7 +318,12 @@ void __stdcall UI::SpeedConfig::Render() {
     FontAwesome::PushSolid();
     if (ImGui::CollapsingHeader(slopeTerrainHeader.c_str())) {
         ImGui::Checkbox("Enable slope effect", (bool*)&Settings::slopeEnabled);
-        ImGui::Checkbox("Affect NPCs", (bool*)&Settings::slopeAffectsNPCs);
+        bool affectNPCs = Settings::enableSpeedScalingForNPCs.load();
+        if (!affectNPCs) {
+            ImGui::TextDisabled("Enable 'Affect NPCs too?' in General Settings to modify NPC slope settings.");
+        } else {
+            ImGui::Checkbox("Affect NPCs too?", (bool*)&Settings::slopeAffectsNPCs);
+        }
 
         ImGui::SliderFloat("Uphill per degree", (float*)&Settings::slopeUphillPerDeg, 0.0f, 5.0f, "%.2f");
         ImGui::SliderFloat("Downhill per degree", (float*)&Settings::slopeDownhillPerDeg, 0.0f, 5.0f, "%.2f");
