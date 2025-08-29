@@ -48,6 +48,7 @@ Skyrim combines forward and sideways input in a way that makes diagonal movement
 - **Beast form awareness** to ignore modifiers in Werewolf or Vampire Lord forms if desired.
 - **Slope / Terrain effects** that adjust movement speed dynamically based on uphill/downhill angle, including stairs, ramps, and uneven ground. Separate multipliers for uphill and downhill, min/max clamps, and smooth blending. Works in real time for both keyboard and controller, and can optionally affect NPCs.
 - **Lightweight and script-free**; no Papyrus, no save bloat.
+- **Weather presets** to adjust speed based on current or mod-added weather, with replace/add modes and option to ignore interiors.
 
 ---
 
@@ -103,19 +104,31 @@ If the SKSE menu is present, open the Mod Control Panel and select **Dynamic Spe
 - Add location types by keyword (e.g., `LocTypeCity`).
 - Inline edit, remove entries, and save the list.
 
+**Weather Presets**
+- Adjust movement speed based on active weather (supports modded weather).
+- Replace or Add behavior, or ignore completely.
+- Option to ignore interiors (default: enabled).
+- Add specific weathers by `Plugin|0xFormID`, or press **Use Current Weather**.
+- Inline edit, highlight current weather, remove entries, and save the list.
+
 ---
 
 ## Screenshots
 
 <div align="center">
-	<img src="images/156801-1755285609-865040815.webp" alt="General Settings" width="300">
-	<img src="images/156801-1755285645-393358034.webp" alt="Speed Settings" width="300">
-	<img src="images/156801-1755285868-265725594.webp" alt="Speed Settings" width="300">
-	<img src="images/156801-1755285875-139567159.webp" alt="Speed Settings" width="300">
-	<img src="images/156801-1755285883-1856957770.webp" alt="Speed Settings" width="300">
-	<img src="images/156801-1755285889-1242798898.webp" alt="Location Rules - Add Location" width="300">
-	<img src="images/156801-1755285693-1483819244.webp" alt="Attack Settings" width="300">
-	<img src="images/156801-1755285712-1338132135.webp" alt="Location Rules" width="300">
+	<img src="images/20250829221219_1.jpg" alt="General Settings" width="300">
+	<img src="images/20250829221221_1.jpg" alt="General Settings" width="300">
+	<img src="images/20250829221225_1.jpg" alt="General Settings" width="300">
+	<img src="images/20250829221228_1.jpg" alt="Speed Settings" width="300">
+	<img src="images/20250829221232_1.jpg" alt="Speed Settings" width="300">
+	<img src="images/20250829221233_1.jpg" alt="Speed Settings - Add Location" width="300">
+	<img src="images/20250829221235_1.jpg" alt="Speed Settings" width="300">
+	<img src="images/20250829221245_1.jpg" alt="Attack Rules" width="300">
+	<img src="images/20250829221247_1.jpg" alt="Attack Rules" width="300">
+	<img src="images/20250829221251_1.jpg" alt="Attack Rules" width="300">
+	<img src="images/20250829221256_1.jpg" alt="Location Rules" width="300">
+	<img src="images/20250829221301_1.jpg" alt="Weather Rules" width="300">
+	<img src="images/20250829221304_1.jpg" alt="Weather Rules" width="300">
 </div>
 
 ---
@@ -124,58 +137,90 @@ If the SKSE menu is present, open the Mod Control Panel and select **Dynamic Spe
 
 Everything lives in `Data/SKSE/Plugins/SpeedController.json`. The in-game menu reads and writes the same file.
 
+This is an example configuration with explanations below.
 ```json
 {
-  "kReduceOutOfCombat": 45.0,
-  "kReduceJoggingOutOfCombat": 25.0,
-  "kReduceDrawn": 15.0,
-  "kReduceSneak": 20.0,
-  "kIncreaseSprinting": 25.0,
-  "kNoReductionInCombat": true,
-
-  "kToggleSpeedKey": 269,
-  "kToggleSpeedEvent": "Shout",
-  "kSprintEventName": "Sprint",
-
-  "kEnableSpeedScalingForNPCs": false,
-  "kEnableDiagonalSpeedFix": true,
-  "kEnableDiagonalSpeedFixForNPCs": false,
-  "kIgnoreBeastForms": true,
-
-  "kSmoothingEnabled": true,
-  "kSmoothingAffectsNPCs": true,
-  "kSmoothingBypassOnStateChange": true,
-  "kSmoothingMode": "ExpoThenRate",
-  "kSmoothingHalfLifeMs": 160.0,
-  "kSmoothingMaxChangePerSecond": 120.0,
-
-  "kMinFinalSpeedMult": 10.0,
-  "kEventDebounceMs": 10,
-
-  "kSyncSprintAnimToSpeed": true,
-  "kOnlySlowDown": true,
-  "kSprintAnimMin": 0.50,
-  "kSprintAnimMax": 1.25,
-  "kSprintAnimOwnSmoothing": true,
-  "kSprintAnimMode": 2,
-  "kSprintAnimTau": 0.10,
-  "kSprintAnimRatePerSec": 5.0,
-  "kSprintAffectsCombat": false,
-
-  "kAttackSpeedEnabled": true,
-  "kAttackOnlyWhenDrawn": true,
-  "kAttackBase": 1.0,
-  "kWeightPivot": 10.0,
-  "kWeightSlope": -0.03,
-  "kUsePlayerScale": false,
-  "kScaleSlope": 0.25,
-  "kMinAttackMult": 0.60,
-  "kMaxAttackMult": 1.80,
-
-  "kReduceInLocationSpecific": [],
-  "kReduceInLocationType": [],
-  "kLocationAffects": "default",
-  "kLocationMode": "replace"
+    "kArmorAffectsAttackSpeed": false,
+    "kArmorAffectsMovement": false,
+    "kArmorMoveMax": 0.0,
+    "kArmorMoveMin": -60.0,
+    "kArmorWeightPivot": 20.0,
+    "kArmorWeightSlopeAtk": -0.009999999776482582,
+    "kArmorWeightSlopeSM": -1.0,
+    "kAttackBase": 0.800000011920929,
+    "kAttackOnlyWhenDrawn": true,
+    "kAttackSpeedEnabled": true,
+    "kEnableDiagonalSpeedFix": false,
+    "kEnableDiagonalSpeedFixForNPCs": false,
+    "kEnableSpeedScalingForNPCs": false,
+    "kEventDebounceMs": 10,
+    "kIgnoreBeastForms": true,
+    "kIncreaseSprinting": 45.0,
+    "kLocationAffects": "default",
+    "kLocationMode": "replace",
+    "kMaxAttackMult": 1.7999999523162842,
+    "kMinAttackMult": 0.6000000238418579,
+    "kMinFinalSpeedMult": 10.0,
+    "kNoReductionInCombat": true,
+    "kNpcPercentOfPlayer": 50.0,
+    "kNpcRadius": 2048,
+    "kOnlySlowDown": true,
+    "kReduceDrawn": 15.0,
+    "kReduceInLocationSpecific": [
+        {
+            "form": "cceejsse001-hstead.esm|0x000F1E",
+            "value": 60.0
+        }
+    ],
+    "kReduceInLocationType": [],
+    "kReduceJoggingOutOfCombat": 10.0,
+    "kReduceOutOfCombat": 51.0,
+    "kReduceSneak": 53.0,
+    "kScaleSlope": 0.25,
+    "kSlopeAffectsNPCs": false,
+    "kSlopeClampEnabled": true,
+    "kSlopeDownhillPerDeg": 0.4000000059604645,
+    "kSlopeEnabled": true,
+    "kSlopeLookbackUnits": 20.0,
+    "kSlopeMaxAbs": 25.0,
+    "kSlopeMaxFinal": 120.0,
+    "kSlopeMaxHistorySec": 1.600000023841858,
+    "kSlopeMedianN": 3,
+    "kSlopeMethod": 1,
+    "kSlopeMinFinal": 25.0,
+    "kSlopeMinXYPerFrame": 0.25,
+    "kSlopeTau": 0.1599999964237213,
+    "kSlopeUphillPerDeg": 0.6000000238418579,
+    "kSmoothingAffectsNPCs": false,
+    "kSmoothingBypassOnStateChange": false,
+    "kSmoothingEnabled": true,
+    "kSmoothingHalfLifeMs": 300.0,
+    "kSmoothingMaxChangePerSecond": 15.0,
+    "kSmoothingMode": "ExpoThenRate",
+    "kSprintAffectsCombat": false,
+    "kSprintAnimMax": 0.5,
+    "kSprintAnimMin": 0.25,
+    "kSprintAnimMode": 2,
+    "kSprintAnimOwnSmoothing": true,
+    "kSprintAnimRatePerSec": 12.0,
+    "kSprintAnimTau": 0.20000000298023224,
+    "kSprintEventName": "Sprint",
+    "kSyncSprintAnimToSpeed": true,
+    "kToggleSpeedEvent": "Shout",
+    "kToggleSpeedKey": 269,
+    "kUseMaxArmorWeight": false,
+    "kUsePlayerScale": true,
+    "kWeatherAffects": "default",
+    "kWeatherEnabled": true,
+    "kWeatherMode": "add",
+    "kWeatherPresets": [
+        {
+            "form": "Skyrim.esm|0x10A242",
+            "value": 20.0
+        }
+    ],
+    "kWeightPivot": 10.0,
+    "kWeightSlope": -0.029999999329447746
 }
 ```
 
