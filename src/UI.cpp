@@ -104,6 +104,7 @@ void UI::Register() {
     SKSEMenuFramework::AddSectionItem("Speed Settings", SpeedConfig::Render);
     SKSEMenuFramework::AddSectionItem("Attack Settings", SpeedConfig::RenderAttack);
     SKSEMenuFramework::AddSectionItem("Location Rules", SpeedConfig::RenderLocations);
+    SKSEMenuFramework::AddSectionItem("Weather Presets", SpeedConfig::RenderWeather);
 }
 
 void __stdcall UI::SpeedConfig::RenderGeneral() {
@@ -561,7 +562,9 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
             Settings::locationAffects = Settings::LocationAffects::AllStates;
         }
 
-        int mode = (Settings::locationMode == Settings::LocationMode::Add) ? 1 : 0;
+        int mode = (Settings::locationMode == Settings::LocationMode::Replace) ? 0
+                   : (Settings::locationMode == Settings::LocationMode::Add)   ? 1
+                                                                               : 2;
         if (ImGui::RadioButton("Replace base reduction", mode == 0)) {
             Settings::locationMode = Settings::LocationMode::Replace;
         }
@@ -569,6 +572,11 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
         if (ImGui::RadioButton("Add to base reduction", mode == 1)) {
             Settings::locationMode = Settings::LocationMode::Add;
         }
+        /*
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Ignore location rules", mode == 2)) {
+            Settings::locationMode = Settings::LocationMode::Ignore;
+        }*/
     }
 
     ImGui::Spacing();
@@ -706,6 +714,182 @@ void __stdcall UI::SpeedConfig::RenderLocations() {
         }
     }
     FontAwesome::Pop();
+
+    ImGui::Separator();
+    FontAwesome::PushSolid();
+    if (ImGui::Button(saveIcon.c_str())) {
+        Settings::SaveToJson(Settings::DefaultPath());
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+            SpeedController::GetSingleton()->RefreshNow();
+        }
+    }
+    FontAwesome::Pop();
+}
+
+void __stdcall UI::SpeedConfig::RenderWeather() {
+    ImGui::Text("Weather-based Modifiers");
+    ImGui::Separator();
+
+    // Master toggle
+    bool wen = Settings::weatherEnabled.load();
+    if (ImGui::Checkbox("Enable weather-based speed modifier", &wen)) {
+        Settings::weatherEnabled.store(wen);
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+    }
+
+    bool win = Settings::weatherIgnoreInterior.load();
+    if (ImGui::Checkbox("Ignore interior cells", &win)) {
+        Settings::weatherIgnoreInterior.store(win);
+        if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+    }
+
+    {
+        int aff = (Settings::weatherAffects == Settings::WeatherAffects::AllStates) ? 1 : 0;
+        if (ImGui::RadioButton("Affect Default/Out-of-combat only", aff == 0)) {
+            Settings::weatherAffects = Settings::WeatherAffects::DefaultOnly;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Affect All Movement States", aff == 1)) {
+            Settings::weatherAffects = Settings::WeatherAffects::AllStates;
+        }
+
+        int mode = (Settings::weatherMode == Settings::WeatherMode::Add) ? 1 : 0;
+        if (ImGui::RadioButton("Replace base reduction", mode == 0)) {
+            Settings::weatherMode = Settings::WeatherMode::Replace;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Add to base reduction", mode == 1)) {
+            Settings::weatherMode = Settings::WeatherMode::Add;
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Hint: Values are 'reduce' amounts (0...100). Higher = slower movement.");
+    ImGui::Spacing();
+
+    static char specBuf[256] = {};
+    static float specVal = 20.0f;
+
+    ImGui::InputText("Weather (Plugin|0xID)", specBuf, sizeof(specBuf));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Use Current Weather")) {
+        if (auto* sky = RE::Sky::GetSingleton()) {
+            if (auto* w = sky->currentWeather) {
+                std::string spec;
+                if (MakeFormSpecFromForm(w, spec)) {
+                    std::snprintf(specBuf, sizeof(specBuf), "%s", spec.c_str());
+                }
+            }
+        }
+    }
+    ImGui::SliderFloat("Value (reduce)", &specVal, 0.f, 100.f, "%.1f");
+    if (ImGui::Button("Add / Update")) {
+        Settings::FormSpec fs;
+        if (Settings::ParseFormSpec(specBuf, fs.plugin, fs.id)) {
+            fs.value = std::max(0.f, std::min(100.f, specVal));
+            bool replaced = false;
+            for (auto& e : Settings::reduceInWeatherSpecific) {
+                if (e.plugin == fs.plugin && e.id == fs.id) {
+                    e.value = fs.value;
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) Settings::reduceInWeatherSpecific.push_back(std::move(fs));
+            specBuf[0] = '\0';
+        }
+    }
+
+    ImGui::Separator();
+    // Full list of all Weathers, editable values + highlight current
+    auto* dh = RE::TESDataHandler::GetSingleton();
+    auto* sky = RE::Sky::GetSingleton();
+    RE::TESWeather* cur = sky ? sky->currentWeather : nullptr;
+
+    if (dh) {
+        const ImGuiTableFlags tblFlags =
+            ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame;
+
+        FontAwesome::PushSolid();
+        if (ImGui::CollapsingHeader(weatherListHeader.c_str())) {
+            if (ImGui::BeginTable("weatherTable", 3, tblFlags)) {
+                ImGui::TableSetupColumn("Weather");
+                ImGui::TableSetupColumn("Value");
+                ImGui::TableSetupColumn("Remove");
+                ImGui::TableHeadersRow();
+
+                const auto& arr = dh->GetFormArray<RE::TESWeather>();
+                for (auto* w : arr) {
+                    if (!w) continue;
+
+                    const bool isCurrent = (cur && w == cur);
+                    const ImVec4 hl = ImVec4(0.80f, 0.90f, 1.0f, 1.0f);  // Text-Highlight
+
+                    ImGui::TableNextRow();
+
+                    // Col 1: Plugin|0xID
+                    ImGui::TableSetColumnIndex(0);
+                    std::string spec;
+                    if (MakeFormSpecFromForm(w, spec)) {
+                        if (isCurrent) ImGui::PushStyleColor(ImGuiCol_Text, hl);
+                        ImGui::Text("%s%s", (isCurrent ? ">> " : ""), spec.c_str());
+                        if (isCurrent) ImGui::PopStyleColor();
+                    } else {
+                        if (isCurrent) ImGui::PushStyleColor(ImGuiCol_Text, hl);
+                        ImGui::Text("%s0x%08X", (isCurrent ? ">> " : ""), w->GetFormID());
+                        if (isCurrent) ImGui::PopStyleColor();
+                    }
+
+                    int idx = -1;
+                    for (int i = 0; i < static_cast<int>(Settings::reduceInWeatherSpecific.size()); ++i) {
+                        auto& e = Settings::reduceInWeatherSpecific[i];
+                        auto* lw = RE::TESDataHandler::GetSingleton()->LookupForm<RE::TESWeather>(e.id, e.plugin);
+                        if (lw == w) {
+                            idx = i;
+                            break;
+                        }
+                    }
+                    float curVal = (idx >= 0) ? Settings::reduceInWeatherSpecific[idx].value : 0.0f;
+
+                    // Col 2: Value editor
+                    ImGui::TableSetColumnIndex(1);
+                    float tmp = curVal;
+                    std::string idVal = "##wval" + std::to_string(w->GetFormID());
+                    if (ImGui::DragFloat(idVal.c_str(), &tmp, 0.1f, 0.f, 100.f, "%.1f")) {
+                        tmp = std::max(0.f, std::min(100.f, tmp));
+                        if (idx >= 0) {
+                            Settings::reduceInWeatherSpecific[idx].value = tmp;
+                        } else {
+                            Settings::FormSpec fs;
+                            if (MakeFormSpecFromForm(w, spec) && Settings::ParseFormSpec(spec, fs.plugin, fs.id)) {
+                                fs.value = tmp;
+                                Settings::reduceInWeatherSpecific.push_back(std::move(fs));
+                            }
+                        }
+                        if (auto* pc = RE::PlayerCharacter::GetSingleton())
+                            SpeedController::GetSingleton()->RefreshNow();
+                    }
+
+                    // Col 3: Remove
+                    ImGui::TableSetColumnIndex(2);
+                    std::string idRem = "X##wrem" + std::to_string(w->GetFormID());
+                    if (idx >= 0) {
+                        if (ImGui::SmallButton(idRem.c_str())) {
+                            Settings::reduceInWeatherSpecific.erase(Settings::reduceInWeatherSpecific.begin() + idx);
+                        }
+                    } else {
+                        ImGui::BeginDisabled();
+                        ImGui::SmallButton(idRem.c_str());
+                        ImGui::EndDisabled();
+                    }
+                }
+                ImGui::EndTable();
+            }
+        }
+        FontAwesome::Pop();
+    } else {
+        ImGui::TextDisabled("TESDataHandler not available.");
+    }
 
     ImGui::Separator();
     FontAwesome::PushSolid();

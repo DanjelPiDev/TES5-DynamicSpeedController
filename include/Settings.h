@@ -106,10 +106,20 @@ struct Settings {
     static inline std::vector<FormSpec> reduceInLocationSpecific;  // BGSLocation*
 
     enum class LocationAffects { DefaultOnly, AllStates };
-    enum class LocationMode { Replace, Add };
+    enum class LocationMode { Replace, Add, Ignore };
 
     static inline LocationAffects locationAffects{LocationAffects::DefaultOnly};
     static inline LocationMode locationMode{LocationMode::Replace};
+
+    // Weather
+    enum class WeatherAffects { DefaultOnly, AllStates };
+    enum class WeatherMode { Replace, Add };
+
+    static inline std::atomic<bool> weatherEnabled{true};
+    static inline WeatherAffects weatherAffects{WeatherAffects::DefaultOnly};
+    static inline WeatherMode weatherMode{WeatherMode::Add};
+    static inline std::vector<FormSpec> reduceInWeatherSpecific;  // TESWeather*
+    static inline std::atomic<bool> weatherIgnoreInterior{true};
 
     static bool SaveToJson(const std::filesystem::path& file);
     static bool LoadFromJson(const std::filesystem::path& file);

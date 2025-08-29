@@ -107,6 +107,29 @@ static inline void ClampSpeedFloor(RE::Actor* a) {
     }
 }
 
+static RE::TESWeather* GetCurrentWeather() {
+    if (auto* sky = RE::Sky::GetSingleton()) {
+        return sky->currentWeather;
+    }
+    return nullptr;
+}
+
+static std::optional<float> ComputeWeatherValue(const RE::Actor* a) {
+    if (!Settings::weatherEnabled.load()) return std::nullopt;
+    if (Settings::weatherIgnoreInterior.load()) {
+        const RE::TESObjectCELL* cell = a ? a->GetParentCell() : nullptr;
+        if (cell && cell->IsInteriorCell()) return std::nullopt;
+    }
+    auto* cur = GetCurrentWeather();
+    if (!cur) return std::nullopt;
+    for (auto& fs : Settings::reduceInWeatherSpecific) {
+        if (auto* w = LookupForm<RE::TESWeather>(fs.plugin, fs.id); w && w == cur) {
+            return fs.value;
+        }
+    }
+    return std::nullopt;
+}
+
 
 namespace {
     inline bool IsWithinNPCProcRadius(const RE::Actor* a) {
@@ -921,8 +944,9 @@ float SpeedController::CaseToDelta(const RE::Actor* a) const {
             break;
     }
 
-    if (Settings::locationAffects == Settings::LocationAffects::AllStates ||
-        (Settings::locationAffects == Settings::LocationAffects::DefaultOnly && (c == MoveCase::Default))) {
+    if (Settings::locationMode != Settings::LocationMode::Ignore && 
+        (Settings::locationAffects == Settings::LocationAffects::AllStates || 
+            (Settings::locationAffects == Settings::LocationAffects::DefaultOnly && (c == MoveCase::Default)))) {
         RE::BGSLocation* loc = nullptr;
         if (a) {
             if (auto* l = a->GetCurrentLocation())
@@ -952,7 +976,14 @@ float SpeedController::CaseToDelta(const RE::Actor* a) const {
             }
         }
     }
-    done_loc:;
+done_loc:;
+    if (Settings::weatherEnabled.load() &&
+        (Settings::weatherAffects == Settings::WeatherAffects::AllStates ||
+         (Settings::weatherAffects == Settings::WeatherAffects::DefaultOnly && (c == MoveCase::Default)))) {
+        if (auto w = ComputeWeatherValue(a)) {
+            base = (Settings::weatherMode == Settings::WeatherMode::Replace) ? -(*w) : base - (*w);
+        }
+    }
 
     bool sprint = IsSprintingLatched(a);
     if (sprint) {
