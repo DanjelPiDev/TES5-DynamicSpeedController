@@ -87,11 +87,12 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
         }
         return arr;
     };
+
     j["kReduceInLocationType"] = dumpList(reduceInLocationType);
     j["kReduceInLocationSpecific"] = dumpList(reduceInLocationSpecific);
 
     j["kLocationAffects"] = (locationAffects == LocationAffects::AllStates) ? "all" : "default";
-    j["kLocationMode"] = (locationMode == LocationMode::Add) ? "add" : "replace";
+    j["kLocationMode"] = (locationMode == LocationMode::Add) ? "add" : (locationMode == LocationMode::Replace) ? "replace" : "ignore";
     j["kMinFinalSpeedMult"] = minFinalSpeedMult.load();
     j["kSyncSprintAnimToSpeed"] = syncSprintAnimToSpeed.load();
     j["kOnlySlowDown"] = onlySlowDown.load();
@@ -124,6 +125,11 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kArmorWeightSlopeAtk"] = armorWeightSlopeAtk.load();
     j["kNpcRadius"] = npcRadius.load();
     j["kNpcPercentOfPlayer"] = npcPercentOfPlayer.load();
+    j["kWeatherEnabled"] = weatherEnabled.load();
+    j["kWeatherAffects"] = (weatherAffects == WeatherAffects::AllStates) ? "all" : "default";
+    j["kWeatherMode"] = (weatherMode == WeatherMode::Add) ? "add" : "replace";
+    j["kWeatherPresets"] = dumpList(reduceInWeatherSpecific);
+    j["kWeatherIgnoreInterior"] = weatherIgnoreInterior.load();
 
     std::ofstream out(file);
     if (!out.is_open()) return false;
@@ -285,6 +291,7 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
 
     reduceInLocationType.clear();
     reduceInLocationSpecific.clear();
+    reduceInWeatherSpecific.clear();
 
     auto loadList = [](const nlohmann::json& arr, std::vector<FormSpec>& out) {
         if (!arr.is_array()) return;
@@ -315,7 +322,9 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kLocationMode") && j["kLocationMode"].is_string()) {
         auto s = j["kLocationMode"].get<std::string>();
         std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-        locationMode = (s == "add") ? LocationMode::Add : LocationMode::Replace;
+        if (s == "add") locationMode = LocationMode::Add;
+        else if (s == "replace") locationMode = LocationMode::Replace;
+        else if (s == "ignore") locationMode = LocationMode::Ignore;
     }
     if (j.contains("kSlopeEnabled")) {
         slopeEnabled = j["kSlopeEnabled"].get<bool>();
@@ -405,6 +414,24 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
         float v = j["kNpcPercentOfPlayer"].get<float>();
         npcPercentOfPlayer = clampf(v, 0.0f, 200.0f);
     }
-
+    if (j.contains("kWeatherPresets")) {
+        loadList(j["kWeatherPresets"], reduceInWeatherSpecific);
+    }
+    if (j.contains("kWeatherEnabled")) {
+        weatherEnabled = j["kWeatherEnabled"].get<bool>();
+    }
+    if (j.contains("kWeatherAffects") && j["kWeatherAffects"].is_string()) {
+        auto s = j["kWeatherAffects"].get<std::string>();
+        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        weatherAffects = (s == "all") ? WeatherAffects::AllStates : WeatherAffects::DefaultOnly;
+    }
+    if (j.contains("kWeatherMode") && j["kWeatherMode"].is_string()) {
+        auto s = j["kWeatherMode"].get<std::string>();
+        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        weatherMode = (s == "add") ? WeatherMode::Add : WeatherMode::Replace;
+    }
+    if (j.contains("kWeatherIgnoreInterior")) {
+        weatherIgnoreInterior = j["kWeatherIgnoreInterior"].get<bool>();
+    }
     return true;
 }

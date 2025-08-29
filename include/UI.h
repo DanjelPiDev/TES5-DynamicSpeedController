@@ -11,6 +11,7 @@ namespace UI {
         void __stdcall Render();
         void __stdcall RenderAttack();
         void __stdcall RenderLocations();
+        void __stdcall RenderWeather();
 
         inline std::string saveIcon = FontAwesome::UnicodeToUtf8(0xf0c7) + " Save Settings";
 
@@ -26,5 +27,6 @@ namespace UI {
 
         inline std::string specificLocationHeader = FontAwesome::UnicodeToUtf8(0xf3c5) + " Specific Locations (BGSLocation)";
         inline std::string typesLocationHeader = FontAwesome::UnicodeToUtf8(0xf59f) + " Location Types (BGSKeyword e.g. LocType*)";
+        inline std::string weatherListHeader = FontAwesome::UnicodeToUtf8(0xf743) + " Available Weather Presets";
     }
 }
