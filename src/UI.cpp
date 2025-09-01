@@ -103,6 +103,7 @@ void UI::Register() {
     SKSEMenuFramework::AddSectionItem("General Settings", SpeedConfig::RenderGeneral);
     SKSEMenuFramework::AddSectionItem("Speed Settings", SpeedConfig::Render);
     SKSEMenuFramework::AddSectionItem("Attack Settings", SpeedConfig::RenderAttack);
+    SKSEMenuFramework::AddSectionItem("Vitals & Resources", SpeedConfig::RenderVitals);
     SKSEMenuFramework::AddSectionItem("Location Rules", SpeedConfig::RenderLocations);
     SKSEMenuFramework::AddSectionItem("Weather Presets", SpeedConfig::RenderWeather);
 }
@@ -547,6 +548,70 @@ void __stdcall UI::SpeedConfig::RenderAttack() {
     FontAwesome::Pop();
 }
 
+void __stdcall UI::SpeedConfig::RenderVitals() {
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader(vitalsHeader.c_str())) {
+        ImGui::TextDisabled("SpeedMult reduction when vital resources are low. Values are in SpeedMult points (%%).");
+        auto drawBlock = [](const char* id, const char* labelEnabled, bool& en, float& thr, float& red, float& sw) {
+            ImGui::PushID(id);
+            if (ImGui::Checkbox(labelEnabled, &en)) {
+                if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+            }
+            ImGui::BeginDisabled(!en);
+            ImGui::SliderFloat("Threshold (%)", &thr, 0.f, 100.f, "%.0f");
+            ImGui::TextDisabled("At or below this percent, reduction starts.");
+            ImGui::SliderFloat("Reduce (SpeedMult %pts)", &red, 0.f, 100.f, "%.0f");
+            ImGui::TextDisabled("How many SpeedMult points to subtract at full effect.");
+            ImGui::SliderFloat("Smoothing width (%)", &sw, 0.f, 100.f, "%.0f");
+            ImGui::TextDisabled("Linear ramp. 0 = hard cutoff, larger = gentler blend below threshold.");
+            ImGui::EndDisabled();
+            ImGui::Separator();
+
+            ImGui::PopID();
+        };
+
+        // Health
+        bool hEn = Settings::healthEnabled.load();
+        float hThr = Settings::healthThresholdPct.load();
+        float hRed = Settings::healthReducePct.load();
+        float hSw = Settings::healthSmoothWidthPct.load();
+        drawBlock("Health", "Health affects speed", hEn, hThr, hRed, hSw);
+        Settings::healthEnabled.store(hEn);
+        Settings::healthThresholdPct.store(hThr);
+        Settings::healthReducePct.store(hRed);
+        Settings::healthSmoothWidthPct.store(hSw);
+
+        // Stamina
+        bool sEn = Settings::staminaEnabled.load();
+        float sThr = Settings::staminaThresholdPct.load();
+        float sRed = Settings::staminaReducePct.load();
+        float sSw = Settings::staminaSmoothWidthPct.load();
+        drawBlock("Stamina", "Stamina affects speed", sEn, sThr, sRed, sSw);
+        Settings::staminaEnabled.store(sEn);
+        Settings::staminaThresholdPct.store(sThr);
+        Settings::staminaReducePct.store(sRed);
+        Settings::staminaSmoothWidthPct.store(sSw);
+
+        // Magicka
+        bool mEn = Settings::magickaEnabled.load();
+        float mThr = Settings::magickaThresholdPct.load();
+        float mRed = Settings::magickaReducePct.load();
+        float mSw = Settings::magickaSmoothWidthPct.load();
+        drawBlock("Magicka", "Magicka affects speed", mEn, mThr, mRed, mSw);
+        Settings::magickaEnabled.store(mEn);
+        Settings::magickaThresholdPct.store(mThr);
+        Settings::magickaReducePct.store(mRed);
+        Settings::magickaSmoothWidthPct.store(mSw);
+
+        FontAwesome::PushSolid();
+        if (ImGui::Button(saveIcon.c_str())) {
+            Settings::SaveToJson(Settings::DefaultPath());
+            if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+        }
+        FontAwesome::Pop();
+    }
+    FontAwesome::Pop();
+}
 
 void __stdcall UI::SpeedConfig::RenderLocations() {
     ImGui::Text("Location-based Modifiers");

@@ -129,7 +129,36 @@ static std::optional<float> ComputeWeatherValue(const RE::Actor* a) {
     }
     return std::nullopt;
 }
+static float LinearVitalPenaltyPct(const RE::Actor* a, RE::ActorValue av, bool enabled, float thrPct, float reducePct,
+                                   float smoothWidthPct) {
+    if (!enabled || !a) return 0.0f;
 
+    RE::Actor* ac = const_cast<RE::Actor*>(a);
+    auto* avo = ac ? ac->AsActorValueOwner() : nullptr;
+    if (!avo) return 0.0f;
+
+    const float cur = avo->GetActorValue(av);
+
+    float maxv = 0.0f;
+    try {
+        maxv = avo->GetPermanentActorValue(av);
+    } catch (...) {
+    }
+    if (maxv <= 1e-3f) return 0.0f;
+
+    const float pct = std::clamp(cur / maxv * 100.0f, 0.0f, 100.0f);
+    const float w = std::max(0.0f, smoothWidthPct);
+
+    float factor = 0.0f;
+    if (pct <= thrPct - w)
+        factor = 1.0f;
+    else if (pct < thrPct && w > 0.f)
+        factor = (thrPct - pct) / w;
+    else
+        factor = 0.0f;
+
+    return -reducePct * std::clamp(factor, 0.0f, 1.0f);
+}
 
 namespace {
     inline bool IsWithinNPCProcRadius(const RE::Actor* a) {
@@ -1003,6 +1032,20 @@ done_loc:;
             armDelta = std::clamp(armDelta, hi, lo);
         }
         base += armDelta;
+    }
+
+    {
+        float vit = 0.0f;
+        vit += LinearVitalPenaltyPct(a, RE::ActorValue::kHealth, Settings::healthEnabled.load(),
+                                     Settings::healthThresholdPct.load(), Settings::healthReducePct.load(),
+                                     Settings::healthSmoothWidthPct.load());
+        vit += LinearVitalPenaltyPct(a, RE::ActorValue::kStamina, Settings::staminaEnabled.load(),
+                                     Settings::staminaThresholdPct.load(), Settings::staminaReducePct.load(),
+                                     Settings::staminaSmoothWidthPct.load());
+        vit += LinearVitalPenaltyPct(a, RE::ActorValue::kMagicka, Settings::magickaEnabled.load(),
+                                     Settings::magickaThresholdPct.load(), Settings::magickaReducePct.load(),
+                                     Settings::magickaSmoothWidthPct.load());
+        base += vit;
     }
     return base;
 }
