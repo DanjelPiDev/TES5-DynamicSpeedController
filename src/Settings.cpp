@@ -131,6 +131,10 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kWeatherPresets"] = dumpList(reduceInWeatherSpecific);
     j["kWeatherIgnoreInterior"] = weatherIgnoreInterior.load();
 
+    j["kScaleCompEnabled"] = scaleCompEnabled.load();
+    j["kScaleCompOnlyBelowOne"] = scaleCompOnlyBelowOne.load();
+    j["kScaleCompPerUnitSM"] = scaleCompPerUnitSM.load();
+
     std::ofstream out(file);
     if (!out.is_open()) return false;
     out << j.dump(4);
@@ -432,6 +436,16 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     }
     if (j.contains("kWeatherIgnoreInterior")) {
         weatherIgnoreInterior = j["kWeatherIgnoreInterior"].get<bool>();
+    }
+    if (j.contains("kScaleCompEnabled")) {
+        scaleCompEnabled = j["kScaleCompEnabled"].get<bool>();
+    }
+    if (j.contains("kScaleCompOnlyBelowOne")) {
+        scaleCompOnlyBelowOne = j["kScaleCompOnlyBelowOne"].get<bool>();
+    }
+    if (j.contains("kScaleCompPerUnitSM")) {
+        float v = j["kScaleCompPerUnitSM"].get<float>();
+        scaleCompPerUnitSM = std::clamp(v, -300.0f, 300.0f);
     }
     return true;
 }
