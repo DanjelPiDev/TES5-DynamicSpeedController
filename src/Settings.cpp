@@ -146,6 +146,11 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kMagickaReducePct"] = magickaReducePct.load();
     j["kMagickaSmoothWidthPct"] = magickaSmoothWidthPct.load();
 
+    j["kScaleCompEnabled"] = scaleCompEnabled.load();
+    j["kScaleCompOnlyBelowOne"] = scaleCompOnlyBelowOne.load();
+    j["kScaleCompPerUnitSM"] = scaleCompPerUnitSM.load();
+
+
     std::ofstream out(file);
     if (!out.is_open()) return false;
     out << j.dump(4);
@@ -464,5 +469,17 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kMagickaThresholdPct")) magickaThresholdPct = clamp01(j["kMagickaThresholdPct"].get<float>());
     if (j.contains("kMagickaReducePct")) magickaReducePct = clamp01(j["kMagickaReducePct"].get<float>());
     if (j.contains("kMagickaSmoothWidthPct")) magickaSmoothWidthPct = clamp01(j["kMagickaSmoothWidthPct"].get<float>());
+
+    if (j.contains("kScaleCompEnabled")) {
+        scaleCompEnabled = j["kScaleCompEnabled"].get<bool>();
+    }
+    if (j.contains("kScaleCompOnlyBelowOne")) {
+        scaleCompOnlyBelowOne = j["kScaleCompOnlyBelowOne"].get<bool>();
+    }
+    if (j.contains("kScaleCompPerUnitSM")) {
+        float v = j["kScaleCompPerUnitSM"].get<float>();
+        scaleCompPerUnitSM = std::clamp(v, -300.0f, 300.0f);
+    }
+
     return true;
 }

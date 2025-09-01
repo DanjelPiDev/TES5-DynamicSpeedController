@@ -1047,6 +1047,14 @@ done_loc:;
                                      Settings::magickaSmoothWidthPct.load());
         base += vit;
     }
+  
+    if (Settings::scaleCompEnabled.load() && a) {
+        const float s = GetPlayerScaleSafe(a);
+        if (!Settings::scaleCompOnlyBelowOne.load() || s < 1.0f) {
+            // Positive when s < 1.0 (boost small actors), negative when s > 1.0 (optional slowdown)
+            base += Settings::scaleCompPerUnitSM.load() * (1.0f - s);
+        }
+    }
     return base;
 }
 

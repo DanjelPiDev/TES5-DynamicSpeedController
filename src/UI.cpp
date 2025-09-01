@@ -166,6 +166,22 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
                 Settings::enableDiagonalSpeedFixForNPCs.store(dfixNPC);
             }
         }
+
+        bool scEn = Settings::scaleCompEnabled.load();
+        if (ImGui::Checkbox("Actor Scale Compensation (movement)", &scEn)) {
+            Settings::scaleCompEnabled.store(scEn);
+        }
+        ImGui::TextDisabled("Normalizes movement for scaled characters.");
+
+        float scPer = Settings::scaleCompPerUnitSM.load();
+        if (ImGui::SliderFloat("Per 1.0 size difference (SpeedMult)", &scPer, -200.0f, 200.0f, "%.1f")) {
+            Settings::scaleCompPerUnitSM.store(scPer);
+        }
+        bool belowOnly = Settings::scaleCompOnlyBelowOne.load();
+        if (ImGui::Checkbox("Only compensate when scale < 1.0", &belowOnly)) {
+            Settings::scaleCompOnlyBelowOne.store(belowOnly);
+        }
+        ImGui::TextDisabled("NPCs inherit this via general 'Affect NPCs too?' toggle and % of player setting.");
     }
     FontAwesome::Pop();
 
