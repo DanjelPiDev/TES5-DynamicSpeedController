@@ -97,6 +97,21 @@ struct Settings {
     static inline std::atomic<int> npcRadius{2048};  // Max distance for NPCs is 16384, 0 = All NPCs (Disable radius check)
     static inline std::atomic<float> npcPercentOfPlayer{50.0f};  // NPCs move at least this percent of player speed, because NPCs are slower than players
 
+    static inline std::atomic<bool> healthEnabled{false};
+    static inline std::atomic<float> healthThresholdPct{30.0f};
+    static inline std::atomic<float> healthReducePct{20.0f};
+    static inline std::atomic<float> healthSmoothWidthPct{15.0f};
+
+    static inline std::atomic<bool> staminaEnabled{false};
+    static inline std::atomic<float> staminaThresholdPct{35.0f};
+    static inline std::atomic<float> staminaReducePct{25.0f};
+    static inline std::atomic<float> staminaSmoothWidthPct{20.0f};
+
+    static inline std::atomic<bool> magickaEnabled{false};
+    static inline std::atomic<float> magickaThresholdPct{25.0f};
+    static inline std::atomic<float> magickaReducePct{15.0f};
+    static inline std::atomic<float> magickaSmoothWidthPct{10.0f};
+
     // Location stuff
     static bool ParseFormSpec(const std::string& spec, std::string& plugin, std::uint32_t& id);
 

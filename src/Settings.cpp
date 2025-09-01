@@ -131,9 +131,25 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kWeatherPresets"] = dumpList(reduceInWeatherSpecific);
     j["kWeatherIgnoreInterior"] = weatherIgnoreInterior.load();
 
+    j["kHealthEnabled"] = healthEnabled.load();
+    j["kHealthThresholdPct"] = healthThresholdPct.load();
+    j["kHealthReducePct"] = healthReducePct.load();
+    j["kHealthSmoothWidthPct"] = healthSmoothWidthPct.load();
+
+    j["kStaminaEnabled"] = staminaEnabled.load();
+    j["kStaminaThresholdPct"] = staminaThresholdPct.load();
+    j["kStaminaReducePct"] = staminaReducePct.load();
+    j["kStaminaSmoothWidthPct"] = staminaSmoothWidthPct.load();
+
+    j["kMagickaEnabled"] = magickaEnabled.load();
+    j["kMagickaThresholdPct"] = magickaThresholdPct.load();
+    j["kMagickaReducePct"] = magickaReducePct.load();
+    j["kMagickaSmoothWidthPct"] = magickaSmoothWidthPct.load();
+
     j["kScaleCompEnabled"] = scaleCompEnabled.load();
     j["kScaleCompOnlyBelowOne"] = scaleCompOnlyBelowOne.load();
     j["kScaleCompPerUnitSM"] = scaleCompPerUnitSM.load();
+
 
     std::ofstream out(file);
     if (!out.is_open()) return false;
@@ -437,6 +453,23 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kWeatherIgnoreInterior")) {
         weatherIgnoreInterior = j["kWeatherIgnoreInterior"].get<bool>();
     }
+
+    auto clamp01 = [](float v) { return std::max(0.0f, std::min(100.0f, v)); };
+    if (j.contains("kHealthEnabled")) healthEnabled = j["kHealthEnabled"].get<bool>();
+    if (j.contains("kHealthThresholdPct")) healthThresholdPct = clamp01(j["kHealthThresholdPct"].get<float>());
+    if (j.contains("kHealthReducePct")) healthReducePct = clamp01(j["kHealthReducePct"].get<float>());
+    if (j.contains("kHealthSmoothWidthPct")) healthSmoothWidthPct = clamp01(j["kHealthSmoothWidthPct"].get<float>());
+
+    if (j.contains("kStaminaEnabled")) staminaEnabled = j["kStaminaEnabled"].get<bool>();
+    if (j.contains("kStaminaThresholdPct")) staminaThresholdPct = clamp01(j["kStaminaThresholdPct"].get<float>());
+    if (j.contains("kStaminaReducePct")) staminaReducePct = clamp01(j["kStaminaReducePct"].get<float>());
+    if (j.contains("kStaminaSmoothWidthPct")) staminaSmoothWidthPct = clamp01(j["kStaminaSmoothWidthPct"].get<float>());
+
+    if (j.contains("kMagickaEnabled")) magickaEnabled = j["kMagickaEnabled"].get<bool>();
+    if (j.contains("kMagickaThresholdPct")) magickaThresholdPct = clamp01(j["kMagickaThresholdPct"].get<float>());
+    if (j.contains("kMagickaReducePct")) magickaReducePct = clamp01(j["kMagickaReducePct"].get<float>());
+    if (j.contains("kMagickaSmoothWidthPct")) magickaSmoothWidthPct = clamp01(j["kMagickaSmoothWidthPct"].get<float>());
+
     if (j.contains("kScaleCompEnabled")) {
         scaleCompEnabled = j["kScaleCompEnabled"].get<bool>();
     }
@@ -447,5 +480,6 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
         float v = j["kScaleCompPerUnitSM"].get<float>();
         scaleCompPerUnitSM = std::clamp(v, -300.0f, 300.0f);
     }
+
     return true;
 }

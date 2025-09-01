@@ -10,6 +10,7 @@ namespace UI {
         void __stdcall RenderGeneral();
         void __stdcall Render();
         void __stdcall RenderAttack();
+        void __stdcall RenderVitals();
         void __stdcall RenderLocations();
         void __stdcall RenderWeather();
 
@@ -22,6 +23,7 @@ namespace UI {
         inline std::string animationsHeader = FontAwesome::UnicodeToUtf8(0xf21d) + " Animations";
         inline std::string slopeTerrainHeader = FontAwesome::UnicodeToUtf8(0xe508) + " Slope / Terrain";
         inline std::string movementSpeedHeader = FontAwesome::UnicodeToUtf8(0xe552) + " Movement Speed Modifiers";
+        inline std::string vitalsHeader = FontAwesome::UnicodeToUtf8(0xf21e) + " Vitals & Resources";
         inline std::string inputHeader = FontAwesome::UnicodeToUtf8(0xf11b) + " Input / Events";
         inline std::string armorHeader = FontAwesome::UnicodeToUtf8(0xf553) + " Armor Weight Scaling";
 
