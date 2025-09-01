@@ -43,6 +43,10 @@ struct Settings {
     inline static std::atomic<bool> ignoreBeastForms{true};
     inline static std::atomic<bool> enableDiagonalSpeedFix{false};
     inline static std::atomic<bool> enableDiagonalSpeedFixForNPCs{false};
+    // Movement speed scaling fix for the player
+    static inline std::atomic<bool> scaleCompEnabled{false};
+    static inline std::atomic<bool> scaleCompOnlyBelowOne{true};  // Only apply if player scale < 1.0
+    static inline std::atomic<float> scaleCompPerUnitSM{120.0f};
 
     static inline std::atomic<float> reduceOutOfCombat{45.0f};
     static inline std::atomic<float> reduceJoggingOutOfCombat{15.0f};
