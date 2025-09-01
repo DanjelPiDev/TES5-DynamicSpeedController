@@ -181,7 +181,7 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
         if (ImGui::Checkbox("Only compensate when scale < 1.0", &belowOnly)) {
             Settings::scaleCompOnlyBelowOne.store(belowOnly);
         }
-        ImGui::TextDisabled("NPCs inherit this via general 'Affect NPCs too?' toggle and % of player setting.");
+        ImGui::TextDisabled("NPCs inherit this via general 'Affect NPCs too?' toggle and percentage of player setting.");
     }
     FontAwesome::Pop();
 
