@@ -106,6 +106,7 @@ void UI::Register() {
     SKSEMenuFramework::AddSectionItem("Vitals & Resources", SpeedConfig::RenderVitals);
     SKSEMenuFramework::AddSectionItem("Location Rules", SpeedConfig::RenderLocations);
     SKSEMenuFramework::AddSectionItem("Weather Presets", SpeedConfig::RenderWeather);
+    SKSEMenuFramework::AddSectionItem("Add-ons", SpeedConfig::RenderAddons);
 }
 
 void __stdcall UI::SpeedConfig::RenderGeneral() {
@@ -335,23 +336,41 @@ void __stdcall UI::SpeedConfig::Render() {
 
     FontAwesome::PushSolid();
     if (ImGui::CollapsingHeader(slopeTerrainHeader.c_str())) {
-        ImGui::Checkbox("Enable slope effect", (bool*)&Settings::slopeEnabled);
+        bool slopeEnabled = Settings::slopeEnabled.load();
+        if (ImGui::Checkbox("Enable slope effect", &slopeEnabled)) {
+            Settings::slopeEnabled.store(slopeEnabled);
+        }
         bool affectNPCs = Settings::enableSpeedScalingForNPCs.load();
         if (!affectNPCs) {
             ImGui::TextDisabled("Enable 'Affect NPCs too?' in General Settings to modify NPC slope settings.");
         } else {
-            ImGui::Checkbox("Affect NPCs too?", (bool*)&Settings::slopeAffectsNPCs);
+            bool slopeNPC = Settings::slopeAffectsNPCs.load();
+            if (ImGui::Checkbox("Affect NPCs too?", &slopeNPC)) {
+                Settings::slopeAffectsNPCs.store(slopeNPC);
+            }
         }
 
-        ImGui::SliderFloat("Uphill per degree", (float*)&Settings::slopeUphillPerDeg, 0.0f, 5.0f, "%.2f");
-        ImGui::SliderFloat("Downhill per degree", (float*)&Settings::slopeDownhillPerDeg, 0.0f, 5.0f, "%.2f");
-        ImGui::SliderFloat("Max |slope delta|", (float*)&Settings::slopeMaxAbs, 0.0f, 100.0f, "%.1f");
-        ImGui::SliderFloat("Smoothing tau (s)", (float*)&Settings::slopeTau, 0.01f, 5.0f, "%.2f");
+        float slopeUphillPerDeg = Settings::slopeUphillPerDeg.load();
+        ImGui::SliderFloat("Uphill per degree", &slopeUphillPerDeg, 0.0f, 5.0f, "%.2f");
+
+        float slopeDownhillPerDeg = Settings::slopeDownhillPerDeg.load();
+        ImGui::SliderFloat("Downhill per degree", &slopeDownhillPerDeg, 0.0f, 5.0f, "%.2f");
+
+        float slopeMaxAbs = Settings::slopeMaxAbs.load();
+        ImGui::SliderFloat("Max |slope delta|", &slopeMaxAbs, 0.0f, 100.0f, "%.1f");
+
+        float slopeTau = Settings::slopeTau.load();
+        ImGui::SliderFloat("Smoothing tau (s)", &slopeTau, 0.01f, 5.0f, "%.2f");
 
         ImGui::Separator();
-        ImGui::Checkbox("Clamp final SpeedMult while slope is active", (bool*)&Settings::slopeClampEnabled);
-        ImGui::SliderFloat("Slope Min Final", (float*)&Settings::slopeMinFinal, 0.0f, 500.0f, "%.0f");
-        ImGui::SliderFloat("Slope Max Final", (float*)&Settings::slopeMaxFinal, 0.0f, 500.0f, "%.0f");
+        bool slopeClampEnabled = Settings::slopeClampEnabled.load();
+        ImGui::Checkbox("Clamp final SpeedMult while slope is active", &slopeClampEnabled);
+
+        float slopeMinFinal = Settings::slopeMinFinal.load();
+        ImGui::SliderFloat("Slope Min Final", &slopeMinFinal, 0.0f, 500.0f, "%.0f");
+
+        float slopeMaxFinal = Settings::slopeMaxFinal.load();
+        ImGui::SliderFloat("Slope Max Final", &slopeMaxFinal, 0.0f, 500.0f, "%.0f");
 
         int slopeMethod = Settings::slopeMethod.load();
         const char* slopeMethods[] = {"Instant", "Path-based"};
@@ -904,7 +923,7 @@ void __stdcall UI::SpeedConfig::RenderWeather() {
                     if (!w) continue;
 
                     const bool isCurrent = (cur && w == cur);
-                    const ImVec4 hl = ImVec4(0.80f, 0.90f, 1.0f, 1.0f);  // Text-Highlight
+                    const ImVec4 hl = ImVec4(0.80f, 0.90f, 1.0f, 1.0f);
 
                     ImGui::TableNextRow();
 
@@ -978,6 +997,73 @@ void __stdcall UI::SpeedConfig::RenderWeather() {
         Settings::SaveToJson(Settings::DefaultPath());
         if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
             SpeedController::GetSingleton()->RefreshNow();
+        }
+    }
+    FontAwesome::Pop();
+}
+
+void __stdcall UI::SpeedConfig::RenderAddons() {
+    ImGui::Text("Add-ons");
+    ImGui::Separator();
+
+    auto isDWInstalled = []() -> bool {
+        HMODULE h = GetModuleHandleA("DynamicWetness.dll");
+        if (!h) h = GetModuleHandleA("DynamicWetness");
+        if (!h) return false;
+        return GetProcAddress(h, "SWE_SetExternalWetnessMask") != nullptr;
+    }();
+    const bool dwInstalled = isDWInstalled;
+
+    FontAwesome::PushSolid();
+    if (ImGui::CollapsingHeader("Dynamic Wetness")) {
+        bool dwEnabled = Settings::dwEnabled.load();
+        if (dwEnabled && !dwInstalled) {
+            ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.6f, 1.0f), "DynamicWetness not detected! Please install the mod first. (Requires DW v1.3.0+)");
+            ImGui::Separator();
+            dwEnabled = false;
+        }
+        if (ImGui::Checkbox("Enable DynamicWetness support", &dwEnabled)) {
+            Settings::dwEnabled.store(dwEnabled);
+            if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+        }
+
+        ImGui::BeginDisabled(!(dwInstalled && Settings::dwEnabled.load()));
+        bool dwSlopeFeatureEnabled = Settings::dwSlopeFeatureEnabled.load();
+        if (ImGui::Checkbox("Enable DW Slope-Feature", &dwSlopeFeatureEnabled)) {
+            Settings::dwSlopeFeatureEnabled.store(dwSlopeFeatureEnabled);
+            if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+        }
+
+        float startDeg = Settings::dwStartDeg.load();
+        float fullDeg = Settings::dwFullDeg.load();
+
+        if (ImGui::SliderFloat("Uphill start angle (deg)", &startDeg, 0.0f, 30.0f, "%.1f")) {
+            const float guard = std::max(0.1f, std::min(fullDeg - 0.1f, startDeg));
+            Settings::dwStartDeg.store(guard);
+        }
+        if (ImGui::SliderFloat("Uphill full angle (deg)", &fullDeg, 1.0f, 45.0f, "%.1f")) {
+            const float guard = std::max(Settings::dwStartDeg.load() + 0.1f, fullDeg);
+            Settings::dwFullDeg.store(guard);
+        }
+        ImGui::TextDisabled("Wetness intensity ramps linearly from start to full angle.");
+
+        float bu = Settings::dwBuildUpPerSec.load();
+        if (ImGui::SliderFloat("Wetness build-up rate (Delta/s)", &bu, 0.0f, 10.0f, "%.2f")) {
+            Settings::dwBuildUpPerSec.store(bu);
+        }
+        ImGui::TextDisabled("0 = instant; larger = faster build-up.");
+
+        float dr = Settings::dwDryPerSec.load();
+        if (ImGui::SliderFloat("Dry rate (Delta/s)", &dr, 0.0f, 10.0f, "%.2f")) {
+            Settings::dwDryPerSec.store(dr);
+        }
+        ImGui::TextDisabled("0 = instant; larger = faster drying.");
+
+        ImGui::EndDisabled();
+
+        ImGui::Separator();
+        if (ImGui::Button(saveIcon.c_str())) {
+            Settings::SaveToJson(Settings::DefaultPath());
         }
     }
     FontAwesome::Pop();

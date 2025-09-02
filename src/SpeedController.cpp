@@ -4,11 +4,132 @@
 #include <cmath>
 
 #include "SKSE/Logger.h"
-
 #include "nlohmann/json.hpp"
 using nlohmann::json;
 
 using namespace RE;
+
+namespace SWE_Link {
+    // ==== low 4 bits ====
+    constexpr unsigned CAT_SKIN = 1u << 0;
+    constexpr unsigned CAT_HAIR = 1u << 1;
+    constexpr unsigned CAT_ARMOR = 1u << 2;
+    constexpr unsigned CAT_WEAPON = 1u << 3;
+
+    // ==== Flags (high bits) ====
+    constexpr unsigned FLAG_PT = 1u << 16;      // passthrough
+    constexpr unsigned FLAG_NO_DRY = 1u << 17;
+    constexpr unsigned FLAG_ZERO = 1u << 18;  // Zero based on category, not add
+
+    // ==== Environment-Mask Bits ====
+    constexpr unsigned ENV_WATER = 1u << 0;
+    constexpr unsigned ENV_WET_WEATHER = 1u << 1;
+    constexpr unsigned ENV_NEAR_HEAT = 1u << 2;
+    constexpr unsigned ENV_UNDER_ROOF = 1u << 3;
+    constexpr unsigned ENV_EXTERIOR_OPEN = 1u << 4;
+
+    static constexpr const char* kSweatID = "speedctrl_sweat";
+    static constexpr const char* kSweatBlockID = "speedctrl_sweat_block";
+
+    using SetExternalWetnessMask_t = void (*)(RE::Actor*, const char*, float, float, unsigned);
+    using ClearExternalWetness_t = void (*)(RE::Actor*, const char*);
+    using ActorInWater_t = bool (*)(RE::Actor*);
+    using WetWeather_t = bool (*)(RE::Actor*);
+    using GetEnvMask_t = unsigned (*)(RE::Actor*);
+
+    static SetExternalWetnessMask_t pSetMask = nullptr;
+    static ClearExternalWetness_t pClearMask = nullptr;
+    static ClearExternalWetness_t pClearLegacy = nullptr;
+    static ActorInWater_t pActorInWater = nullptr;
+    static WetWeather_t pWetWeather = nullptr;
+    static GetEnvMask_t pGetEnvMask = nullptr;
+
+    static bool tried = false;
+
+    inline void Init() {
+        if (tried) return;
+        tried = true;
+
+        HMODULE h = GetModuleHandleA("DynamicWetness.dll");
+        if (!h) h = GetModuleHandleA("DynamicWetness");
+        if (!h) {
+            spdlog::info("[SWE_Link] DynamicWetness not found");
+            return;
+        }
+
+        pSetMask = reinterpret_cast<SetExternalWetnessMask_t>(GetProcAddress(h, "SWE_SetExternalWetnessMask"));
+        pClearMask = reinterpret_cast<ClearExternalWetness_t>(GetProcAddress(h, "SWE_ClearExternalWetnessMask"));
+        pClearLegacy = reinterpret_cast<ClearExternalWetness_t>(GetProcAddress(h, "SWE_ClearExternalWetness"));
+        pActorInWater = reinterpret_cast<ActorInWater_t>(GetProcAddress(h, "SWE_IsActorInWater"));
+        pWetWeather = reinterpret_cast<WetWeather_t>(GetProcAddress(h, "SWE_IsWetWeatherAround"));
+        pGetEnvMask = reinterpret_cast<GetEnvMask_t>(GetProcAddress(h, "SWE_GetEnvMask"));
+    }
+
+    inline bool IsAvailable() {
+        Init();
+        return (pSetMask != nullptr) && (pClearMask != nullptr || pClearLegacy != nullptr);
+    }
+
+    inline bool IsWorldWet(RE::Actor* a) {
+        Init();
+        if (!a) return false;
+        if (pGetEnvMask) {
+            unsigned m = pGetEnvMask(a);
+            return (m & ENV_WATER) || (m & ENV_WET_WEATHER);
+        }
+        const bool inWater = (pActorInWater && pActorInWater(a));
+        const bool wetWx = (pWetWeather && pWetWeather(a));
+        return inWater || wetWx;
+    }
+
+    inline void SetSweat(RE::Actor* a, float v, float ttlSec, bool envIsWet) {
+        Init();
+        if (!pSetMask) return;
+        v = std::clamp(v, 0.0f, 1.0f);
+
+        if (envIsWet) {
+            if (pClearMask) {
+                pClearMask(a, kSweatID);
+                pClearMask(a, kSweatBlockID);
+            } else if (pClearLegacy) {
+                pClearLegacy(a, kSweatID);
+                pClearLegacy(a, kSweatBlockID);
+            }
+            return;
+        }
+
+        const unsigned skinMask = CAT_SKIN | FLAG_PT | FLAG_NO_DRY;
+        pSetMask(a, kSweatID, v, ttlSec, skinMask);
+
+        const unsigned blockMask = (CAT_HAIR | CAT_ARMOR | CAT_WEAPON) | FLAG_ZERO | FLAG_NO_DRY;
+        pSetMask(a, kSweatBlockID, 0.0f, ttlSec, blockMask);
+    }
+
+    inline void SetSweatSkinOnly(RE::Actor* a, float v, float ttlSec) {
+        Init();
+        if (!pSetMask) return;
+        v = std::clamp(v, 0.0f, 1.0f);
+
+        const unsigned nonSkinZero = (CAT_HAIR | CAT_ARMOR | CAT_WEAPON) | FLAG_ZERO | FLAG_NO_DRY;
+        pSetMask(a, "speedctrl_sweat_clear", 0.0f, ttlSec, nonSkinZero);
+
+        const unsigned skinMask = CAT_SKIN | FLAG_PT | FLAG_NO_DRY;
+        pSetMask(a, "speedctrl_sweat", v, ttlSec, skinMask);
+    }
+
+    inline void ClearSweat(RE::Actor* a) {
+        Init();
+        if (pClearMask) {
+            pClearMask(a, kSweatID);
+            pClearMask(a, kSweatBlockID);
+        } else if (pClearLegacy) {
+            pClearLegacy(a, kSweatID);
+            pClearLegacy(a, kSweatBlockID);
+        } else {
+            SetSweat(a, 0.0f, 0.25f, false);
+        }
+    }
+}
 
 SpeedController* SpeedController::GetSingleton() {
     static SpeedController inst;
@@ -255,7 +376,6 @@ void SpeedController::UpdateSprintAnimRate(RE::Actor* a) {
     TrySetAnyGraphVarFloat(a, {"fAnimSpeedMult", "AnimSpeedMult", "AnimSpeed", "fSprintSpeedMult"}, sprintAnimRate_);
 }
 
-
 RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESEquipEvent* evn,
                                                        RE::BSTEventSource<RE::TESEquipEvent>*) {
     if (!evn) return RE::BSEventNotifyControl::kContinue;
@@ -303,7 +423,6 @@ void SpeedController::ClearSlopeDeltaFor(RE::Actor* a) {
     }
 }
 
-
 bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
     if (!a || dt <= 0.f) return false;
     if (!Settings::slopeEnabled.load()) return false;
@@ -328,6 +447,49 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
     if (Settings::slopeMethod.load() == 1) {
         haveSlope =
             ComputePathSlopeDeg(a, Settings::slopeLookbackUnits.load(), Settings::slopeMaxHistorySec.load(), slopeDeg);
+        if (a == RE::PlayerCharacter::GetSingleton() 
+            && Settings::dwEnabled.load() 
+            && Settings::dwSlopeFeatureEnabled.load()) {
+            static float s_dwIntensity = 0.0f;
+
+            const float startDeg = std::max(0.0f, Settings::dwStartDeg.load());
+            const float fullDeg = std::max(startDeg + 0.1f, Settings::dwFullDeg.load());
+            const float span = std::max(0.1f, fullDeg - startDeg);
+
+            float target = 0.0f;
+
+            if (!still && haveSlope && slopeDeg > startDeg) {
+                const float moveMag = std::clamp(std::sqrt(moveX_ * moveX_ + moveY_ * moveY_), 0.0f, 1.0f);
+                const float slopePart = std::clamp((slopeDeg - startDeg) / span, 0.0f, 1.0f);
+                target = std::clamp(slopePart * (0.50f + 0.50f * moveMag), 0.0f, 1.0f);
+            }
+
+            const float rateUp = std::max(0.0f, Settings::dwBuildUpPerSec.load());
+            const float rateDown = std::max(0.0f, Settings::dwDryPerSec.load());
+            const float rate = (target >= s_dwIntensity) ? rateUp : rateDown;
+
+            s_dwIntensity = RateTowards(s_dwIntensity, target, dt, rate);
+
+            static float s_lastSent = -1.0f;
+            static uint64_t s_lastMs = 0;
+            const uint64_t nowMs = NowMs();
+
+            const bool wetEnv = SWE_Link::IsWorldWet(a);
+            constexpr float kHoldSec = 1.75f;
+            constexpr float kEps = 1e-3f;
+
+            float sendVal = (s_dwIntensity > kEps) ? s_dwIntensity : 0.0f;
+            bool needSend = std::fabs(sendVal - s_lastSent) > 0.01f ||
+                            (sendVal == 0.0f && (nowMs - s_lastMs) > 600);  // TTL
+
+            if (needSend) {
+                SWE_Link::SetSweat(a, sendVal, kHoldSec, wetEnv);
+                s_lastSent = sendVal;
+                s_lastMs = nowMs;
+            }
+        } else {
+            SWE_Link::ClearSweat(a);
+        }
     } else {
         haveSlope = false;
     }
@@ -372,8 +534,8 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
     return false;
 }
 
-
-RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESLoadGameEvent*, RE::BSTEventSource<RE::TESLoadGameEvent>*) {
+RE::BSEventNotifyControl SpeedController::ProcessEvent(const RE::TESLoadGameEvent*,
+                                                       RE::BSTEventSource<RE::TESLoadGameEvent>*) {
     loading_.store(true, std::memory_order_relaxed);
     Settings::LoadFromJson(Settings::DefaultPath());
     LoadToggleBindingFromJson();
@@ -613,8 +775,6 @@ void SpeedController::UpdateAttackSpeed(RE::Actor* actor) {
     }
 }
 
-
-
 void SpeedController::UpdateBindingsFromSettings() {
     toggleKeyCode_ = Settings::toggleSpeedKey.load();
     toggleUserEvent_ = Settings::toggleSpeedEvent;
@@ -647,7 +807,8 @@ void SpeedController::LoadToggleBindingFromJson() {
         if (j.contains("kSprintEventName") && j["kSprintEventName"].is_string()) {
             sprintUserEvent_ = j["kSprintEventName"].get<std::string>();
         }
-    } catch (...) {}
+    } catch (...) {
+    }
 }
 
 void SpeedController::StartHeartbeat() {
@@ -779,9 +940,6 @@ void SpeedController::RevertAllNPCDeltas() {
     slopeResidualPlayer_ = 0.0f;
 }
 
-
-
-
 float& SpeedController::AttackDeltaSlot(RE::Actor* a) {
     auto* pc = RE::PlayerCharacter::GetSingleton();
     if (a == pc) return attackDelta_;
@@ -793,7 +951,6 @@ float& SpeedController::CurrentDeltaSlot(RE::Actor* a) {
     if (a == pc) return currentDelta;
     return currentDeltaNPC_[GetID(a)];
 }
-
 
 void SpeedController::TryInitDrawnFromGraph() {
     if (initTried_) return;
@@ -819,6 +976,9 @@ SpeedController::MoveCase SpeedController::ComputeCase(const RE::Actor* a) const
 void SpeedController::OnPreLoadGame() {
     loading_.store(true, std::memory_order_relaxed);
     postLoadCleaned_.store(false, std::memory_order_relaxed);
+    if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+        SWE_Link::ClearSweat(pc);
+    }
 }
 
 void SpeedController::OnPostLoadGame() { DoPostLoadCleanup(); }
@@ -867,7 +1027,7 @@ void SpeedController::DoPostLoadCleanup() {
                 joggingMode_ = snapJog;
 
                 snapshotLoaded_.store(false, std::memory_order_relaxed);
-                
+
                 ForceSpeedRefresh(pc);
             } else {
                 RevertDeltasFor(pc);
@@ -905,7 +1065,6 @@ bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a) {
     }
     return UpdateDiagonalPenalty(a, x, y);
 }
-
 
 bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY) {
     if (!a) return false;
@@ -954,7 +1113,6 @@ bool SpeedController::UpdateDiagonalPenalty(RE::Actor* a, float inX, float inY) 
     return false;
 }
 
-
 float SpeedController::CaseToDelta(const RE::Actor* a) const {
     const MoveCase c = ComputeCase(a);
     float base = 0.0f;
@@ -973,9 +1131,9 @@ float SpeedController::CaseToDelta(const RE::Actor* a) const {
             break;
     }
 
-    if (Settings::locationMode != Settings::LocationMode::Ignore && 
-        (Settings::locationAffects == Settings::LocationAffects::AllStates || 
-            (Settings::locationAffects == Settings::LocationAffects::DefaultOnly && (c == MoveCase::Default)))) {
+    if (Settings::locationMode != Settings::LocationMode::Ignore &&
+        (Settings::locationAffects == Settings::LocationAffects::AllStates ||
+         (Settings::locationAffects == Settings::LocationAffects::DefaultOnly && (c == MoveCase::Default)))) {
         RE::BGSLocation* loc = nullptr;
         if (a) {
             if (auto* l = a->GetCurrentLocation())
@@ -1047,11 +1205,10 @@ done_loc:;
                                      Settings::magickaSmoothWidthPct.load());
         base += vit;
     }
-  
+
     if (Settings::scaleCompEnabled.load() && a) {
         const float s = GetPlayerScaleSafe(a);
         if (!Settings::scaleCompOnlyBelowOne.load() || s < 1.0f) {
-            // Positive when s < 1.0 (boost small actors), negative when s > 1.0 (optional slowdown)
             base += Settings::scaleCompPerUnitSM.load() * (1.0f - s);
         }
     }
@@ -1161,7 +1318,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     }
     t = now;
 
-        bool smoothing = Settings::smoothingEnabled.load() && (isPlayer || Settings::smoothingAffectsNPCs.load());
+    bool smoothing = Settings::smoothingEnabled.load() && (isPlayer || Settings::smoothingAffectsNPCs.load());
 
     // Flip-Logic: Always invalidate diagonal penalty
     const bool curSprint = IsSprintingLatched(a);
@@ -1266,7 +1423,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     } else {
         ClearDiagDeltaFor(a);
     }
-    
+
     const bool slopeChanged = UpdateSlopePenalty(a, dt);
     if (isPlayer) {
         if (slopeChanged) {
@@ -1280,7 +1437,6 @@ void SpeedController::ApplyFor(RE::Actor* a) {
 
     ClampSpeedFloorTracked(a);
 }
-
 
 void SpeedController::ModSpeedMult(RE::Actor* actor, float delta) {
     if (!actor) return;

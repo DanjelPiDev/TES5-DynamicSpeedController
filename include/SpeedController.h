@@ -196,6 +196,7 @@ private:
     void LoadToggleBindingFromJson();
 
     void StartHeartbeat();
+    void StopHeartbeat();
     void TryInitDrawnFromGraph();
 
     MoveCase ComputeCase(const RE::Actor* pc) const;

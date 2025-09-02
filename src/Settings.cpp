@@ -150,6 +150,13 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kScaleCompOnlyBelowOne"] = scaleCompOnlyBelowOne.load();
     j["kScaleCompPerUnitSM"] = scaleCompPerUnitSM.load();
 
+    j["kDwEnabled"] = dwEnabled.load();
+    j["kDwSlopeFeatureEnabled"] = dwSlopeFeatureEnabled.load();
+    j["kDwStartDeg"] = dwStartDeg.load();
+    j["kDwFullDeg"] = dwFullDeg.load();
+
+    j["kDwBuildUpPerSec"] = dwBuildUpPerSec.load();
+    j["kDwDryPerSec"] = dwDryPerSec.load();
 
     std::ofstream out(file);
     if (!out.is_open()) return false;
@@ -479,6 +486,30 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kScaleCompPerUnitSM")) {
         float v = j["kScaleCompPerUnitSM"].get<float>();
         scaleCompPerUnitSM = std::clamp(v, -300.0f, 300.0f);
+    }
+
+    // DW (Dynamic Wetness) integration settings
+    if (j.contains("kDwEnabled")) {
+        dwEnabled = j["kDwEnabled"].get<bool>();
+    }
+    if (j.contains("kDwSlopeFeatureEnabled")) {
+        dwSlopeFeatureEnabled = j["kDwSlopeFeatureEnabled"].get<bool>();
+    }
+    if (j.contains("kDwStartDeg")) {
+        float v = j["kDwStartDeg"].get<float>();
+        dwStartDeg = std::clamp(v, 0.0f, dwFullDeg.load());
+    }
+    if (j.contains("kDwFullDeg")) {
+        float v = j["kDwFullDeg"].get<float>();
+        dwFullDeg = std::clamp(v, dwStartDeg.load(), 90.0f);
+    }
+    if (j.contains("kDwBuildUpPerSec")) {
+        float v = j["kDwBuildUpPerSec"].get<float>();
+        dwBuildUpPerSec = std::clamp(v, 0.0f, 20.0f);
+    }
+    if (j.contains("kDwDryPerSec")) {
+        float v = j["kDwDryPerSec"].get<float>();
+        dwDryPerSec = std::clamp(v, 0.0f, 20.0f);
     }
 
     return true;

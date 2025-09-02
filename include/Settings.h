@@ -112,6 +112,16 @@ struct Settings {
     static inline std::atomic<float> magickaReducePct{15.0f};
     static inline std::atomic<float> magickaSmoothWidthPct{10.0f};
 
+    // DW (Dynamic Wetness) integration settings
+    static inline std::atomic<bool> dwEnabled{true};
+
+    static inline std::atomic<bool> dwSlopeFeatureEnabled{false};
+    static inline std::atomic<float> dwStartDeg{4.0f};
+    static inline std::atomic<float> dwFullDeg{16.0f};
+
+    static inline std::atomic<float> dwBuildUpPerSec{0.35f};
+    static inline std::atomic<float> dwDryPerSec{0.15f};
+
     // Location stuff
     static bool ParseFormSpec(const std::string& spec, std::string& plugin, std::uint32_t& id);
 
