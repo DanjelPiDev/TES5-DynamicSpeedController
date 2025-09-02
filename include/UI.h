@@ -13,6 +13,7 @@ namespace UI {
         void __stdcall RenderVitals();
         void __stdcall RenderLocations();
         void __stdcall RenderWeather();
+        void __stdcall RenderAddons();
 
         inline std::string saveIcon = FontAwesome::UnicodeToUtf8(0xf0c7) + " Save Settings";
 

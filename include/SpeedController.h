@@ -60,12 +60,20 @@ public:
     void ClearPathFor(RE::Actor* a);
     void PushPathSample(RE::Actor* a, const RE::NiPoint3& pos, uint64_t nowMs);
     bool ComputePathSlopeDeg(RE::Actor* a, float lookbackUnits, float maxAgeSec, float& outDeg);
+    void ClearScaleDeltaFor(RE::Actor* a);
+    bool UpdateScaleCompDelta(RE::Actor* a, float predictedNoScaleFinal);
+    float& ScaleDeltaSlot(RE::Actor* a);
 
     float diagResidualPlayer_ = 0.0f;
     std::unordered_map<std::uint32_t, float> diagResidualNPC_;
 
     float slopeResidualPlayer_ = 0.0f;
     std::unordered_map<std::uint32_t, float> slopeResidualNPC_;
+
+    float scaleResidualPlayer_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> scaleResidualNPC_;
+    float scaleDeltaPlayer_ = 0.0f;
+    std::unordered_map<std::uint32_t, float> scaleDeltaNPC_;
 
     inline float& DiagResidualSlot(RE::Actor* a) {
         auto* pc = RE::PlayerCharacter::GetSingleton();
@@ -76,6 +84,11 @@ public:
         auto* pc = RE::PlayerCharacter::GetSingleton();
         if (a == pc) return slopeResidualPlayer_;
         return slopeResidualNPC_[a->GetFormID()];
+    }
+    inline float& ScaleResidualSlot(RE::Actor* a) {
+        auto* pc = RE::PlayerCharacter::GetSingleton();
+        if (a == pc) return scaleResidualPlayer_;
+        return scaleResidualNPC_[a->GetFormID()];
     }
 
 private:
@@ -196,6 +209,7 @@ private:
     void LoadToggleBindingFromJson();
 
     void StartHeartbeat();
+    void StopHeartbeat();
     void TryInitDrawnFromGraph();
 
     MoveCase ComputeCase(const RE::Actor* pc) const;

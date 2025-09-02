@@ -8,6 +8,7 @@
 
 struct Settings {
     enum class SmoothingMode { Exponential = 0, RateLimit = 1, ExpoThenRate = 2 };
+    enum class ScaleCompMode { Additive = 0, Inverse = 1 };
 
     // Slopes
     static inline std::atomic<bool> slopeEnabled{false};
@@ -47,6 +48,7 @@ struct Settings {
     static inline std::atomic<bool> scaleCompEnabled{false};
     static inline std::atomic<bool> scaleCompOnlyBelowOne{true};  // Only apply if player scale < 1.0
     static inline std::atomic<float> scaleCompPerUnitSM{120.0f};
+    static inline ScaleCompMode scaleCompMode{ScaleCompMode::Additive};
 
     static inline std::atomic<float> reduceOutOfCombat{45.0f};
     static inline std::atomic<float> reduceJoggingOutOfCombat{15.0f};
@@ -111,6 +113,16 @@ struct Settings {
     static inline std::atomic<float> magickaThresholdPct{25.0f};
     static inline std::atomic<float> magickaReducePct{15.0f};
     static inline std::atomic<float> magickaSmoothWidthPct{10.0f};
+
+    // DW (Dynamic Wetness) integration settings
+    static inline std::atomic<bool> dwEnabled{true};
+
+    static inline std::atomic<bool> dwSlopeFeatureEnabled{false};
+    static inline std::atomic<float> dwStartDeg{4.0f};
+    static inline std::atomic<float> dwFullDeg{16.0f};
+
+    static inline std::atomic<float> dwBuildUpPerSec{0.35f};
+    static inline std::atomic<float> dwDryPerSec{0.15f};
 
     // Location stuff
     static bool ParseFormSpec(const std::string& spec, std::string& plugin, std::uint32_t& id);
