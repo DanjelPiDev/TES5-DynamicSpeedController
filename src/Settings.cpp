@@ -149,6 +149,15 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kScaleCompEnabled"] = scaleCompEnabled.load();
     j["kScaleCompOnlyBelowOne"] = scaleCompOnlyBelowOne.load();
     j["kScaleCompPerUnitSM"] = scaleCompPerUnitSM.load();
+    switch (scaleCompMode) {
+        case ScaleCompMode::Inverse:
+            j["kScaleCompMode"] = "Inverse";
+            break;
+        case ScaleCompMode::Additive:
+        default:
+            j["kScaleCompMode"] = "Additive";
+            break;
+    }
 
     j["kDwEnabled"] = dwEnabled.load();
     j["kDwSlopeFeatureEnabled"] = dwSlopeFeatureEnabled.load();
@@ -511,6 +520,16 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
         float v = j["kDwDryPerSec"].get<float>();
         dwDryPerSec = std::clamp(v, 0.0f, 20.0f);
     }
-
+    if (j.contains("kScaleCompMode")) {
+        auto& m = j["kScaleCompMode"];
+        if (m.is_string()) {
+            std::string s = m.get<std::string>();
+            std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+            scaleCompMode = (s == "inverse") ? ScaleCompMode::Inverse : ScaleCompMode::Additive;
+        } else if (m.is_number_integer()) {
+            int v = m.get<int>();
+            scaleCompMode = (v == 1) ? ScaleCompMode::Inverse : ScaleCompMode::Additive;
+        }
+    }
     return true;
 }

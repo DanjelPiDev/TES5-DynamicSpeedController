@@ -172,17 +172,25 @@ void __stdcall UI::SpeedConfig::RenderGeneral() {
         if (ImGui::Checkbox("Actor Scale Compensation (movement)", &scEn)) {
             Settings::scaleCompEnabled.store(scEn);
         }
-        ImGui::TextDisabled("Normalizes movement for scaled characters.");
-
-        float scPer = Settings::scaleCompPerUnitSM.load();
-        if (ImGui::SliderFloat("Per 1.0 size difference (SpeedMult)", &scPer, -200.0f, 200.0f, "%.1f")) {
-            Settings::scaleCompPerUnitSM.store(scPer);
+        int scMode = static_cast<int>(Settings::scaleCompMode);
+        const char* modes[] = {"Additive (per size diff)", "Inverse (divide by Scale)"};
+        if (ImGui::Combo("Scale Compensation Mode", &scMode, modes, IM_ARRAYSIZE(modes))) {
+            Settings::scaleCompMode = static_cast<Settings::ScaleCompMode>(scMode);
+        }
+        if (Settings::scaleCompMode == Settings::ScaleCompMode::Additive) {
+            float scPer = Settings::scaleCompPerUnitSM.load();
+            if (ImGui::SliderFloat("Per 1.0 size difference (SpeedMult)", &scPer, -200.0f, 200.0f, "%.1f")) {
+                Settings::scaleCompPerUnitSM.store(scPer);
+            }
+            ImGui::TextDisabled("Delta SpeedMult = k * (1 − Scale).");
+        } else {
+            ImGui::TextDisabled("final SpeedMult is divided by Scale (* 1/Scale).");
         }
         bool belowOnly = Settings::scaleCompOnlyBelowOne.load();
-        if (ImGui::Checkbox("Only compensate when scale < 1.0", &belowOnly)) {
+        if (ImGui::Checkbox("Only compensate when Scale < 1.0", &belowOnly)) {
             Settings::scaleCompOnlyBelowOne.store(belowOnly);
         }
-        ImGui::TextDisabled("NPCs inherit this via general 'Affect NPCs too?' toggle and percentage of player setting.");
+        ImGui::TextDisabled("NPCs inherit this via 'Affect NPCs too?' and NPC percentage of Player.");
     }
     FontAwesome::Pop();
 

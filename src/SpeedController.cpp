@@ -701,6 +701,8 @@ void SpeedController::ClearNPCState(std::uint32_t id) {
     diagDeltaNPC_.erase(id);
     diagResidualNPC_.erase(id);
     slopeResidualNPC_.erase(id);
+    scaleResidualNPC_.erase(id);
+    scaleDeltaNPC_.erase(id);
     pathNPC_.erase(id);
 }
 
@@ -924,6 +926,13 @@ void SpeedController::RevertAllNPCDeltas() {
             }
         }
 
+        if (auto st = scaleDeltaNPC_.find(id); st != scaleDeltaNPC_.end()) {
+            if (std::fabs(st->second) > 0.001f) {
+                avo->ModActorValue(RE::ActorValue::kSpeedMult, -st->second);
+                st->second = 0.0f;
+            }
+        }
+
         ClearSlopeDeltaFor(a);
         ForceSpeedRefresh(a);
     }
@@ -933,6 +942,8 @@ void SpeedController::RevertAllNPCDeltas() {
     currentDeltaNPC_.clear();
     attackDeltaNPC_.clear();
     diagDeltaNPC_.clear();
+    scaleResidualNPC_.clear();
+    scaleDeltaNPC_.clear();
 
     diagResidualNPC_.clear();
     slopeResidualNPC_.clear();
@@ -1206,7 +1217,7 @@ done_loc:;
         base += vit;
     }
 
-    if (Settings::scaleCompEnabled.load() && a) {
+    if (Settings::scaleCompEnabled.load() && a && Settings::scaleCompMode == Settings::ScaleCompMode::Additive) {
         const float s = GetPlayerScaleSafe(a);
         if (!Settings::scaleCompOnlyBelowOne.load() || s < 1.0f) {
             base += Settings::scaleCompPerUnitSM.load() * (1.0f - s);
@@ -1365,6 +1376,7 @@ void SpeedController::ApplyFor(RE::Actor* a) {
         float& curSlot = isPlayer ? currentDelta : currentDeltaNPC_[id];
         float& diagSlot = DiagDeltaSlot(a);
         float& slopeSlot = SlopeDeltaSlot(a);
+        float& scaleSlot = ScaleDeltaSlot(a);
 
         const float curSM = avo->GetActorValue(RE::ActorValue::kSpeedMult);
         const float baseNoUs = curSM - curSlot - diagSlot - slopeSlot;
@@ -1385,7 +1397,16 @@ void SpeedController::ApplyFor(RE::Actor* a) {
             predictedDiag = PredictDiagonalPenalty(baseNoUs + newDelta, floor, x, y, sprinting);
         }
 
-        float expectedFinal = baseNoUs + newDelta + predictedDiag + slopeSlot;
+        float expectedNoScaleFinal = baseNoUs + newDelta + predictedDiag + slopeSlot;
+
+        float sFactor = 1.0f;
+        if (Settings::scaleCompEnabled.load() && Settings::scaleCompMode == Settings::ScaleCompMode::Inverse) {
+            const float s = GetPlayerScaleSafe(a);
+            if (!Settings::scaleCompOnlyBelowOne.load() || s < 1.0f) sFactor = 1.0f / s;
+        }
+
+        float expectedFinal = expectedNoScaleFinal * sFactor;
+
 
         if (Settings::slopeClampEnabled.load()) {
             const float lo = Settings::slopeMinFinal.load();
@@ -1402,6 +1423,8 @@ void SpeedController::ApplyFor(RE::Actor* a) {
         if (expectedFinal < floor) {
             const float needed = floor - expectedFinal;
             newDelta += needed;
+            expectedNoScaleFinal += needed;
+            expectedFinal = expectedNoScaleFinal * sFactor;
         }
 
         diff = newDelta - curSlot;
@@ -1425,12 +1448,42 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     }
 
     const bool slopeChanged = UpdateSlopePenalty(a, dt);
+
+    bool scaleChanged = false;
+    if (Settings::scaleCompEnabled.load() && Settings::scaleCompMode == Settings::ScaleCompMode::Inverse) {
+        if (auto* avo2 = a->AsActorValueOwner()) {
+            float x = 0.f, y = 0.f;
+            const bool sprinting = IsSprintingLatched(a);
+            if (isPlayer) {
+                x = moveX_;
+                y = moveY_;
+            } else {
+                (void)TryGetMoveAxesFromGraph(a, x, y);
+            }
+
+            const float floor = Settings::minFinalSpeedMult.load();
+
+            float& curSlot2 = isPlayer ? currentDelta : currentDeltaNPC_[id];
+            float& diagSlot2 = DiagDeltaSlot(a);
+            float& slopeSlot2 = SlopeDeltaSlot(a);
+
+            const float curSM2 = avo2->GetActorValue(RE::ActorValue::kSpeedMult);
+            const float baseNoUs2 = curSM2 - curSlot2 - diagSlot2 - slopeSlot2;
+            const float predictedDiag2 = PredictDiagonalPenalty(baseNoUs2 + curSlot2, floor, x, y, sprinting);
+            const float noScaleFinalPreview = baseNoUs2 + curSlot2 + predictedDiag2 + slopeSlot2;
+
+            scaleChanged = UpdateScaleCompDelta(a, noScaleFinalPreview);
+        }
+    } else {
+        ClearScaleDeltaFor(a);
+    }
+
     if (isPlayer) {
         if (slopeChanged) {
             pendingRefresh_.store(true, std::memory_order_relaxed);
         }
     } else {
-        if (moveChanged || diagChanged || slopeChanged) {
+        if (moveChanged || diagChanged || slopeChanged || scaleChanged) {
             ForceSpeedRefresh(a);
         }
     }
@@ -1633,11 +1686,19 @@ void SpeedController::RevertDeltasFor(RE::Actor* a) {
         avo->ModActorValue(RE::ActorValue::kSpeedMult, -diag);
         diag = 0.0f;
     }
+
+    float& sc = ScaleDeltaSlot(a);
+    if (std::fabs(sc) > 1e-6f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -sc);
+        sc = 0.0f;
+    }
+
     ClearSlopeDeltaFor(a);
     ForceSpeedRefresh(a);
 
     DiagResidualSlot(a) = 0.0f;
     SlopeResidualSlot(a) = 0.0f;
+    ScaleResidualSlot(a) = 0.0f;
 }
 
 bool SpeedController::TryGetMoveAxesFromGraph(const RE::Actor* a, float& outX, float& outY) const {
@@ -1668,6 +1729,64 @@ float& SpeedController::DiagDeltaSlot(RE::Actor* a) {
     auto* pc = RE::PlayerCharacter::GetSingleton();
     if (a == pc) return diagDelta_;
     return diagDeltaNPC_[GetID(a)];
+}
+
+float& SpeedController::ScaleDeltaSlot(RE::Actor* a) {
+    auto* pc = RE::PlayerCharacter::GetSingleton();
+    if (a == pc) return scaleDeltaPlayer_;
+    return scaleDeltaNPC_[GetID(a)];
+}
+
+void SpeedController::ClearScaleDeltaFor(RE::Actor* a) {
+    if (!a) return;
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return;
+    float& slot = ScaleDeltaSlot(a);
+    if (std::fabs(slot) > 1e-6f) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, -slot);
+        slot = 0.0f;
+    }
+    ScaleResidualSlot(a) = 0.0f;
+}
+
+bool SpeedController::UpdateScaleCompDelta(RE::Actor* a, float predictedNoScaleFinal) {
+    if (!a) return false;
+    if (!Settings::scaleCompEnabled.load()) {
+        ClearScaleDeltaFor(a);
+        return false;
+    }
+    if (Settings::scaleCompMode != Settings::ScaleCompMode::Inverse) {
+        ClearScaleDeltaFor(a);
+        return false;
+    }
+
+    const float s = GetPlayerScaleSafe(a);
+    if (Settings::scaleCompOnlyBelowOne.load() && s >= 1.0f) {
+        // No inverse correction above 1.0
+        ClearScaleDeltaFor(a);
+        return false;
+    }
+    const float factor = 1.0f / std::max(0.01f, s);
+    const float K = factor - 1.0f;
+
+    auto* avo = a->AsActorValueOwner();
+    if (!avo) return false;
+
+    float& slot = ScaleDeltaSlot(a);
+    const float target = K * predictedNoScaleFinal;  // make final = noScale * factor
+    const float delta = target - slot;
+
+    float& acc = ScaleResidualSlot(a);
+    acc += delta;
+
+    static constexpr float kGran = 5e-4f;
+    if (std::fabs(acc) >= kGran) {
+        avo->ModActorValue(RE::ActorValue::kSpeedMult, acc);
+        slot += acc;
+        acc = 0.0f;
+        return true;
+    }
+    return false;
 }
 
 void SpeedController::ClearDiagDeltaFor(RE::Actor* a) {

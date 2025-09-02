@@ -8,6 +8,7 @@
 
 struct Settings {
     enum class SmoothingMode { Exponential = 0, RateLimit = 1, ExpoThenRate = 2 };
+    enum class ScaleCompMode { Additive = 0, Inverse = 1 };
 
     // Slopes
     static inline std::atomic<bool> slopeEnabled{false};
@@ -47,6 +48,7 @@ struct Settings {
     static inline std::atomic<bool> scaleCompEnabled{false};
     static inline std::atomic<bool> scaleCompOnlyBelowOne{true};  // Only apply if player scale < 1.0
     static inline std::atomic<float> scaleCompPerUnitSM{120.0f};
+    static inline ScaleCompMode scaleCompMode{ScaleCompMode::Additive};
 
     static inline std::atomic<float> reduceOutOfCombat{45.0f};
     static inline std::atomic<float> reduceJoggingOutOfCombat{15.0f};
