@@ -89,10 +89,33 @@ void OnLoad(SKSE::SerializationInterface* intfc) {
     }
 }
 
+static void SetupLog() {
+    try {
+        if (auto path = logger::log_directory()) {
+            *path /= "DynamicSpeedController.log";
+            auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), /*truncate=*/true);
+            auto logger = std::make_shared<spdlog::logger>("SWE", sink);
+            spdlog::set_default_logger(logger);
+            spdlog::set_level(spdlog::level::trace);
+            spdlog::flush_on(spdlog::level::info);
+            spdlog::info("DynamicSpeedController logging initialized.");
+            return;
+        }
+    } catch (...) {
+    }
+
+    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("Data/SKSE/Plugins/DynamicSpeedController.log", true);
+    auto logger = std::make_shared<spdlog::logger>("SWE", sink);
+    spdlog::set_default_logger(logger);
+    spdlog::set_level(spdlog::level::trace);
+    spdlog::flush_on(spdlog::level::info);
+    spdlog::info("DynamicSpeedController logging initialized (fallback path).");
+}
 
 BOOL APIENTRY DllMain(HMODULE, DWORD, LPVOID) { return TRUE; }
 
 extern "C" __declspec(dllexport) bool SKSEPlugin_Load(const SKSE::LoadInterface* skse) {
+    SetupLog();
     SKSE::Init(skse);
     auto* ser = SKSE::GetSerializationInterface();
     ser->SetUniqueID(kSerID);

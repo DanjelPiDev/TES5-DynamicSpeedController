@@ -17,7 +17,7 @@ namespace SWE_Link {
     constexpr unsigned CAT_WEAPON = 1u << 3;
 
     // ==== Flags (high bits) ====
-    constexpr unsigned FLAG_PT = 1u << 16;      // passthrough
+    constexpr unsigned FLAG_PT = 1u << 16;  // passthrough
     constexpr unsigned FLAG_NO_DRY = 1u << 17;
     constexpr unsigned FLAG_ZERO = 1u << 18;  // Zero based on category, not add
 
@@ -54,6 +54,7 @@ namespace SWE_Link {
         if (!h) h = GetModuleHandleA("DynamicWetness");
         if (!h) {
             spdlog::info("[SWE_Link] DynamicWetness not found");
+            spdlog::info("[SWE_Link] Download from https://www.nexusmods.com/skyrimspecialedition/mods/158207");
             return;
         }
 
@@ -75,8 +76,12 @@ namespace SWE_Link {
         if (!a) return false;
         if (pGetEnvMask) {
             unsigned m = pGetEnvMask(a);
-            return (m & ENV_WATER) || (m & ENV_WET_WEATHER);
+            const bool inWater = (m & ENV_WATER) != 0;
+            const bool exposedWetWx = (m & ENV_WET_WEATHER) && (m & ENV_EXTERIOR_OPEN) && !(m & ENV_UNDER_ROOF);
+            return inWater || exposedWetWx;
         }
+
+        // Fallback
         const bool inWater = (pActorInWater && pActorInWater(a));
         const bool wetWx = (pWetWeather && pWetWeather(a));
         return inWater || wetWx;
@@ -90,46 +95,25 @@ namespace SWE_Link {
         if (envIsWet) {
             if (pClearMask) {
                 pClearMask(a, kSweatID);
-                pClearMask(a, kSweatBlockID);
             } else if (pClearLegacy) {
                 pClearLegacy(a, kSweatID);
-                pClearLegacy(a, kSweatBlockID);
             }
             return;
         }
-
-        const unsigned skinMask = CAT_SKIN | FLAG_PT | FLAG_NO_DRY;
+        const unsigned skinMask = CAT_SKIN | FLAG_PT;
         pSetMask(a, kSweatID, v, ttlSec, skinMask);
 
-        const unsigned blockMask = (CAT_HAIR | CAT_ARMOR | CAT_WEAPON) | FLAG_ZERO | FLAG_NO_DRY;
-        pSetMask(a, kSweatBlockID, 0.0f, ttlSec, blockMask);
-    }
-
-    inline void SetSweatSkinOnly(RE::Actor* a, float v, float ttlSec) {
-        Init();
-        if (!pSetMask) return;
-        v = std::clamp(v, 0.0f, 1.0f);
-
-        const unsigned nonSkinZero = (CAT_HAIR | CAT_ARMOR | CAT_WEAPON) | FLAG_ZERO | FLAG_NO_DRY;
-        pSetMask(a, "speedctrl_sweat_clear", 0.0f, ttlSec, nonSkinZero);
-
-        const unsigned skinMask = CAT_SKIN | FLAG_PT | FLAG_NO_DRY;
-        pSetMask(a, "speedctrl_sweat", v, ttlSec, skinMask);
     }
 
     inline void ClearSweat(RE::Actor* a) {
         Init();
-        if (pClearMask) {
+        if (pClearMask)
             pClearMask(a, kSweatID);
-            pClearMask(a, kSweatBlockID);
-        } else if (pClearLegacy) {
+        else if (pClearLegacy)
             pClearLegacy(a, kSweatID);
-            pClearLegacy(a, kSweatBlockID);
-        } else {
-            SetSweat(a, 0.0f, 0.25f, false);
-        }
     }
 }
+
 
 SpeedController* SpeedController::GetSingleton() {
     static SpeedController inst;
@@ -470,19 +454,22 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
 
             s_dwIntensity = RateTowards(s_dwIntensity, target, dt, rate);
 
-            static float s_lastSent = -1.0f;
-            static uint64_t s_lastMs = 0;
-            const uint64_t nowMs = NowMs();
-
             const bool wetEnv = SWE_Link::IsWorldWet(a);
+
             constexpr float kHoldSec = 1.75f;
             constexpr float kEps = 1e-3f;
 
-            float sendVal = (s_dwIntensity > kEps) ? s_dwIntensity : 0.0f;
-            bool needSend = std::fabs(sendVal - s_lastSent) > 0.01f ||
-                            (sendVal == 0.0f && (nowMs - s_lastMs) > 600);  // TTL
+            static float s_lastSent = -1.0f;
+            static uint64_t s_lastMs = 0;
+
+            const uint64_t nowMs = NowMs();
+            const float sendVal = (s_dwIntensity > kEps) ? s_dwIntensity : 0.0f;
+
+            const uint64_t resendMs = static_cast<uint64_t>(kHoldSec * 1000.0f * 0.6f);
+            bool needSend = std::fabs(sendVal - s_lastSent) > 0.01f || (nowMs - s_lastMs) > resendMs;
 
             if (needSend) {
+                const bool wetEnv = SWE_Link::IsWorldWet(a);
                 SWE_Link::SetSweat(a, sendVal, kHoldSec, wetEnv);
                 s_lastSent = sendVal;
                 s_lastMs = nowMs;

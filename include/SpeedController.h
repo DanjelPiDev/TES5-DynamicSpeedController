@@ -91,6 +91,11 @@ public:
         return scaleResidualNPC_[a->GetFormID()];
     }
 
+    static inline uint64_t NowMs() {
+        using namespace std::chrono;
+        return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    }
+
 private:
     enum class MoveCase : std::uint8_t { Combat, Drawn, Sneak, Default };
     float SmoothExpo(float prev, float target, float dtSec) const {
@@ -246,9 +251,4 @@ private:
     bool UpdateDiagonalPenalty(RE::Actor* a);
 
     float ComputeArmorWeight(const RE::Actor* a) const;
-
-    static inline uint64_t NowMs() {
-        using namespace std::chrono;
-        return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-    }
 };
