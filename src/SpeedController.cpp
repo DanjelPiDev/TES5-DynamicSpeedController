@@ -52,13 +52,13 @@ namespace SWE_Link {
 
         v = std::clamp(v, 0.0f, 1.0f);
 
-        // If world is wet, let DynamicWetness handle visuals; remove our overlay
+        // If world is wet, let DynamicWetness handle visuals, remove overlay
         if (envIsWet) {
             SWE::API::ClearExternalWetness(a, kSweatID);
             return;
         }
 
-        // Skin only, additive after SWE’s own wetness, no extra flags (same behavior as before)
+        // Skin only, additive after SWE’s own wetness, no extra flags
         const unsigned mask = SWE::API::CAT_SKIN_FACE | SWE::API::FLAG_PASSTHROUGH;
         SWE::API::SetExternalWetnessMask(a, kSweatID, v, ttlSec, mask);
     }
