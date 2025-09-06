@@ -5,114 +5,71 @@
 
 #include "SKSE/Logger.h"
 #include "nlohmann/json.hpp"
+
+#include "DynamicWetness_PublicAPI.h"
 using nlohmann::json;
 
 using namespace RE;
 
 namespace SWE_Link {
-    // ==== low 4 bits ====
-    constexpr unsigned CAT_SKIN = 1u << 0;
-    constexpr unsigned CAT_HAIR = 1u << 1;
-    constexpr unsigned CAT_ARMOR = 1u << 2;
-    constexpr unsigned CAT_WEAPON = 1u << 3;
-
-    // ==== Flags (high bits) ====
-    constexpr unsigned FLAG_PT = 1u << 16;  // passthrough
-    constexpr unsigned FLAG_NO_DRY = 1u << 17;
-    constexpr unsigned FLAG_ZERO = 1u << 18;  // Zero based on category, not add
-
-    // ==== Environment-Mask Bits ====
-    constexpr unsigned ENV_WATER = 1u << 0;
-    constexpr unsigned ENV_WET_WEATHER = 1u << 1;
-    constexpr unsigned ENV_NEAR_HEAT = 1u << 2;
-    constexpr unsigned ENV_UNDER_ROOF = 1u << 3;
-    constexpr unsigned ENV_EXTERIOR_OPEN = 1u << 4;
+    using namespace SWE::API;  // pull in CAT_*, FLAG_*, GetEnvMask(), etc.
 
     static constexpr const char* kSweatID = "speedctrl_sweat";
     static constexpr const char* kSweatBlockID = "speedctrl_sweat_block";
 
-    using SetExternalWetnessMask_t = void (*)(RE::Actor*, const char*, float, float, unsigned);
-    using ClearExternalWetness_t = void (*)(RE::Actor*, const char*);
-    using ActorInWater_t = bool (*)(RE::Actor*);
-    using WetWeather_t = bool (*)(RE::Actor*);
-    using GetEnvMask_t = unsigned (*)(RE::Actor*);
-
-    static SetExternalWetnessMask_t pSetMask = nullptr;
-    static ClearExternalWetness_t pClearMask = nullptr;
-    static ClearExternalWetness_t pClearLegacy = nullptr;
-    static ActorInWater_t pActorInWater = nullptr;
-    static WetWeather_t pWetWeather = nullptr;
-    static GetEnvMask_t pGetEnvMask = nullptr;
-
-    static bool tried = false;
-
     inline void Init() {
+        static bool tried = false;
         if (tried) return;
         tried = true;
 
-        HMODULE h = GetModuleHandleA("DynamicWetness.dll");
-        if (!h) h = GetModuleHandleA("DynamicWetness");
-        if (!h) {
+        if (!SWE::API::Init()) {
             spdlog::info("[SWE_Link] DynamicWetness not found");
             spdlog::info("[SWE_Link] Download from https://www.nexusmods.com/skyrimspecialedition/mods/158207");
-            return;
+        } else {
+            spdlog::info("[SWE_Link] DynamicWetness API initialized");
         }
-
-        pSetMask = reinterpret_cast<SetExternalWetnessMask_t>(GetProcAddress(h, "SWE_SetExternalWetnessMask"));
-        pClearMask = reinterpret_cast<ClearExternalWetness_t>(GetProcAddress(h, "SWE_ClearExternalWetnessMask"));
-        pClearLegacy = reinterpret_cast<ClearExternalWetness_t>(GetProcAddress(h, "SWE_ClearExternalWetness"));
-        pActorInWater = reinterpret_cast<ActorInWater_t>(GetProcAddress(h, "SWE_IsActorInWater"));
-        pWetWeather = reinterpret_cast<WetWeather_t>(GetProcAddress(h, "SWE_IsWetWeatherAround"));
-        pGetEnvMask = reinterpret_cast<GetEnvMask_t>(GetProcAddress(h, "SWE_GetEnvMask"));
     }
 
     inline bool IsAvailable() {
         Init();
-        return (pSetMask != nullptr) && (pClearMask != nullptr || pClearLegacy != nullptr);
+        return SWE::API::IsAvailable();
     }
 
     inline bool IsWorldWet(RE::Actor* a) {
         Init();
-        if (!a) return false;
-        if (pGetEnvMask) {
-            unsigned m = pGetEnvMask(a);
-            const bool inWater = (m & ENV_WATER) != 0;
-            const bool exposedWetWx = (m & ENV_WET_WEATHER) && (m & ENV_EXTERIOR_OPEN) && !(m & ENV_UNDER_ROOF);
-            return inWater || exposedWetWx;
-        }
+        if (!a || !IsAvailable()) return false;
 
-        // Fallback
-        const bool inWater = (pActorInWater && pActorInWater(a));
-        const bool wetWx = (pWetWeather && pWetWeather(a));
-        return inWater || wetWx;
+        // Prefer compact env mask + decode helper for consistent logic
+        const unsigned m = SWE::API::GetEnvMask(a);
+        const auto env = SWE::API::DecodeEnv(m);
+        const bool exposedWetWx = env.wetWeather && env.exteriorOpen && !env.underRoof;
+        return env.inWater || exposedWetWx;
     }
 
     inline void SetSweat(RE::Actor* a, float v, float ttlSec, bool envIsWet) {
         Init();
-        if (!pSetMask) return;
+        if (!a || !IsAvailable()) return;
+
         v = std::clamp(v, 0.0f, 1.0f);
 
+        // If world is wet, let DynamicWetness handle visuals; remove our overlay
         if (envIsWet) {
-            if (pClearMask) {
-                pClearMask(a, kSweatID);
-            } else if (pClearLegacy) {
-                pClearLegacy(a, kSweatID);
-            }
+            SWE::API::ClearExternalWetness(a, kSweatID);
             return;
         }
-        const unsigned skinMask = CAT_SKIN | FLAG_PT;
-        pSetMask(a, kSweatID, v, ttlSec, skinMask);
 
+        // Skin only, additive after SWE’s own wetness, no extra flags (same behavior as before)
+        const unsigned mask = SWE::API::CAT_SKIN_FACE | SWE::API::FLAG_PASSTHROUGH;
+        SWE::API::SetExternalWetnessMask(a, kSweatID, v, ttlSec, mask);
     }
 
     inline void ClearSweat(RE::Actor* a) {
         Init();
-        if (pClearMask)
-            pClearMask(a, kSweatID);
-        else if (pClearLegacy)
-            pClearLegacy(a, kSweatID);
+        if (!a || !IsAvailable()) return;
+        SWE::API::ClearExternalWetness(a, kSweatID);
     }
 }
+
 
 
 SpeedController* SpeedController::GetSingleton() {
