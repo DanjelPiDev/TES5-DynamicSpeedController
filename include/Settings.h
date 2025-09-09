@@ -124,6 +124,20 @@ struct Settings {
     static inline std::atomic<float> dwBuildUpPerSec{0.35f};
     static inline std::atomic<float> dwDryPerSec{0.15f};
 
+    // Stamina usage (drain)
+    static inline std::atomic<bool> staminaUseJogEnabled{false};
+    static inline std::atomic<float> staminaUseJogPerSec{2.0f};
+    static inline std::atomic<bool> staminaUseJogOnlyWhileMoving{true};
+    static inline std::atomic<bool> staminaUseJogAutoDisable{true};
+    static inline std::atomic<float> staminaUseJogMinFloorPct{0.0f};
+
+    static inline std::atomic<bool> staminaUseSlopeEnabled{false};
+    static inline std::atomic<float> staminaUseSlopeStartDeg{4.0f};
+    static inline std::atomic<float> staminaUseSlopePerDegPerSec{0.25f};
+    static inline std::atomic<float> staminaUseSlopeMaxPerSec{10.0f};
+    static inline std::atomic<bool> staminaUseSlopeScaleByMove{true};
+    static inline std::atomic<float> staminaUseSlopeMinFloorPct{0.0f};
+
     // Location stuff
     static bool ParseFormSpec(const std::string& spec, std::string& plugin, std::uint32_t& id);
 

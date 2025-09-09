@@ -646,6 +646,61 @@ void __stdcall UI::SpeedConfig::RenderVitals() {
         Settings::magickaReducePct.store(mRed);
         Settings::magickaSmoothWidthPct.store(mSw);
 
+        ImGui::Separator();
+        ImGui::Text("Stamina Usage (Drain)");
+
+        {
+            bool en = Settings::staminaUseJogEnabled.load();
+            if (ImGui::Checkbox("Drain while Jogging", &en)) Settings::staminaUseJogEnabled.store(en);
+            ImGui::BeginDisabled(!en);
+            float rate = Settings::staminaUseJogPerSec.load();
+            if (ImGui::SliderFloat("Jog drain (points/sec)", &rate, 0.0f, 50.0f, "%.2f")) {
+                Settings::staminaUseJogPerSec.store(rate);
+            }
+            bool onlyMove = Settings::staminaUseJogOnlyWhileMoving.load();
+            if (ImGui::Checkbox("Only while moving", &onlyMove)) Settings::staminaUseJogOnlyWhileMoving.store(onlyMove);
+
+            bool autoOff = Settings::staminaUseJogAutoDisable.load();
+            if (ImGui::Checkbox("Auto-disable Jogging at floor", &autoOff))
+                Settings::staminaUseJogAutoDisable.store(autoOff);
+
+            float floorPct = Settings::staminaUseJogMinFloorPct.load();
+            if (ImGui::SliderFloat("Min Stamina floor (%)", &floorPct, 0.0f, 100.0f, "%.0f")) {
+                Settings::staminaUseJogMinFloorPct.store(floorPct);
+            }
+            ImGui::EndDisabled();
+        }
+
+        ImGui::Separator();
+
+        {
+            bool en = Settings::staminaUseSlopeEnabled.load();
+            if (ImGui::Checkbox("Drain while going uphill (Slope)", &en)) Settings::staminaUseSlopeEnabled.store(en);
+            ImGui::BeginDisabled(!en);
+            float start = Settings::staminaUseSlopeStartDeg.load();
+            if (ImGui::SliderFloat("Start angle (deg)", &start, 0.0f, 30.0f, "%.1f"))
+                Settings::staminaUseSlopeStartDeg.store(start);
+
+            float perDeg = Settings::staminaUseSlopePerDegPerSec.load();
+            if (ImGui::SliderFloat("Rate per degree (pts/s)", &perDeg, 0.0f, 5.0f, "%.2f")) {
+                Settings::staminaUseSlopePerDegPerSec.store(perDeg);
+            }
+            float cap = Settings::staminaUseSlopeMaxPerSec.load();
+            if (ImGui::SliderFloat("Max drain per second", &cap, 0.0f, 50.0f, "%.1f")) {
+                Settings::staminaUseSlopeMaxPerSec.store(cap);
+            }
+            bool scale = Settings::staminaUseSlopeScaleByMove.load();
+            if (ImGui::Checkbox("Scale by movement magnitude", &scale))
+                Settings::staminaUseSlopeScaleByMove.store(scale);
+
+            float floorPct = Settings::staminaUseSlopeMinFloorPct.load();
+            if (ImGui::SliderFloat("Min Stamina floor (Slope) (%)", &floorPct, 0.0f, 100.0f, "%.0f")) {
+                Settings::staminaUseSlopeMinFloorPct.store(floorPct);
+            }
+            ImGui::EndDisabled();
+        }
+
+
         FontAwesome::PushSolid();
         if (ImGui::Button(saveIcon.c_str())) {
             Settings::SaveToJson(Settings::DefaultPath());

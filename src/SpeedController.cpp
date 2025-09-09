@@ -388,6 +388,38 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
     if (Settings::slopeMethod.load() == 1) {
         haveSlope =
             ComputePathSlopeDeg(a, Settings::slopeLookbackUnits.load(), Settings::slopeMaxHistorySec.load(), slopeDeg);
+
+        if (a == RE::PlayerCharacter::GetSingleton() && Settings::staminaUseSlopeEnabled.load()) {
+            if (!still && haveSlope && slopeDeg > Settings::staminaUseSlopeStartDeg.load()) {
+                auto* avo = a->AsActorValueOwner();
+                if (avo && !(Settings::ignoreBeastForms.load() && IsInBeastForm(a))) {
+                    const float moveMag = std::clamp(std::sqrt(moveX_ * moveX_ + moveY_ * moveY_), 0.0f, 1.0f);
+
+                    float rate = (slopeDeg - Settings::staminaUseSlopeStartDeg.load()) *
+                                 Settings::staminaUseSlopePerDegPerSec.load();
+                    if (Settings::staminaUseSlopeScaleByMove.load()) rate *= moveMag;
+                    rate = std::min(std::max(0.0f, rate), Settings::staminaUseSlopeMaxPerSec.load());
+
+                    const float drain = rate * dt;
+
+                    float cur = avo->GetActorValue(RE::ActorValue::kStamina);
+                    float maxv = 0.0f;
+                    try {
+                        maxv = avo->GetPermanentActorValue(RE::ActorValue::kStamina);
+                    } catch (...) {
+                    }
+                    if (maxv > 1e-3f && drain > 1e-6f) {
+                        const float floorAbs = maxv * (Settings::staminaUseSlopeMinFloorPct.load() / 100.0f);
+                        const float allowed = std::max(0.0f, cur - floorAbs);
+                        const float use = std::min(allowed, drain);
+                        if (use > 1e-5f) {
+                            avo->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -use);
+                        }
+                    }
+                }
+            }
+        }
+
         if (a == RE::PlayerCharacter::GetSingleton() 
             && Settings::dwEnabled.load() 
             && Settings::dwSlopeFeatureEnabled.load()) {
@@ -573,6 +605,7 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
                 const auto now = std::chrono::steady_clock::now();
                 if (now - lastToggle_ >= toggleCooldown_) {
                     if (auto* pc = RE::PlayerCharacter::GetSingleton()) {
+                        /*
                         ClearDiagDeltaFor(pc);
 
                         const float before = CaseToDelta(pc);
@@ -584,6 +617,21 @@ RE::BSEventNotifyControl SpeedController::ProcessEvent(RE::InputEvent* const* ev
                             ModSpeedMult(pc, diff);
                         }
                         currentDelta = after;
+
+                        if (Settings::enableDiagonalSpeedFix.load()) {
+                            UpdateDiagonalPenalty(pc);
+                        }
+                        ForceSpeedRefresh(pc);
+                        */
+                        RevertMovementDeltasFor(
+                            pc, /*clearSlope=*/false);
+                        joggingMode_ = !joggingMode_;
+                        const float target = CaseToDelta(pc);
+
+                        if (std::fabs(target) > 1e-6f) {
+                            ModSpeedMult(pc, target);
+                        }
+                        currentDelta = target;
 
                         if (Settings::enableDiagonalSpeedFix.load()) {
                             UpdateDiagonalPenalty(pc);
@@ -1429,6 +1477,57 @@ void SpeedController::ApplyFor(RE::Actor* a) {
     } else {
         if (moveChanged || diagChanged || slopeChanged || scaleChanged) {
             ForceSpeedRefresh(a);
+        }
+    }
+
+    if (isPlayer && Settings::staminaUseJogEnabled.load() && joggingMode_) {
+        if (!(Settings::ignoreBeastForms.load() && IsInBeastForm(a))) {
+            auto* avo = a->AsActorValueOwner();
+            if (avo) {
+                float moveMag = std::sqrt(moveX_ * moveX_ + moveY_ * moveY_);
+                const bool moving = moveMag > 0.05f;
+                if (!Settings::staminaUseJogOnlyWhileMoving.load() || moving) {
+                    const float rate = std::max(0.0f, Settings::staminaUseJogPerSec.load());
+                    const float drain = rate * dt;
+
+                    float cur = avo->GetActorValue(RE::ActorValue::kStamina);
+                    float maxv = 0.0f;
+                    try {
+                        maxv = avo->GetPermanentActorValue(RE::ActorValue::kStamina);
+                    } catch (...) {
+                    }
+                    if (maxv > 1e-3f) {
+                        const float floorAbs = maxv * (Settings::staminaUseJogMinFloorPct.load() / 100.0f);
+                        const float allowed = std::max(0.0f, cur - floorAbs);
+                        const float use = std::min(allowed, drain);
+                        if (use > 1e-5f) {
+                            avo->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -use);
+                            cur -= use;
+                        }
+
+                        if (Settings::staminaUseJogAutoDisable.load() && cur <= floorAbs + 1e-3f) {
+                            /*
+                            const float before = CaseToDelta(a);
+                            joggingMode_ = false;
+                            const float after = CaseToDelta(a);
+                            const float diff2 = after - before;
+                            if (std::fabs(diff2) > 0.01f) ModSpeedMult(a, diff2);
+                            CurrentDeltaSlot(a) = after;
+
+                            ClearDiagDeltaFor(a);
+                            ForceSpeedRefresh(a);
+                            */
+                            RevertMovementDeltasFor(a, /*clearSlope=*/false);
+                            joggingMode_ = false;
+                            const float target2 = CaseToDelta(a);
+                            if (std::fabs(target2) > 1e-6f) ModSpeedMult(a, target2);
+                            CurrentDeltaSlot(a) = target2;
+                            ClearDiagDeltaFor(a);
+                            ForceSpeedRefresh(a);
+                        }
+                    }
+                }
+            }
         }
     }
 

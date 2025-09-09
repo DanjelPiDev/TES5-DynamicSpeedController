@@ -188,7 +188,7 @@ private:
     std::unordered_map<RE::FormID, uint64_t> lastRefreshNPCMs_;
 
     std::chrono::steady_clock::time_point lastToggle_{};
-    std::chrono::milliseconds toggleCooldown_{150};
+    std::chrono::milliseconds toggleCooldown_{225};
 
     float slopeDeltaPlayer_ = 0.0f;
     std::unordered_map<std::uint32_t, float> slopeDeltaNPC_;

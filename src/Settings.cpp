@@ -167,6 +167,19 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kDwBuildUpPerSec"] = dwBuildUpPerSec.load();
     j["kDwDryPerSec"] = dwDryPerSec.load();
 
+    j["kStamUseJogEnabled"] = staminaUseJogEnabled.load();
+    j["kStamUseJogPerSec"] = staminaUseJogPerSec.load();
+    j["kStamUseJogOnlyWhileMoving"] = staminaUseJogOnlyWhileMoving.load();
+    j["kStamUseJogAutoDisable"] = staminaUseJogAutoDisable.load();
+    j["kStamUseJogMinFloorPct"] = staminaUseJogMinFloorPct.load();
+
+    j["kStamUseSlopeEnabled"] = staminaUseSlopeEnabled.load();
+    j["kStamUseSlopeStartDeg"] = staminaUseSlopeStartDeg.load();
+    j["kStamUseSlopePerDegPerSec"] = staminaUseSlopePerDegPerSec.load();
+    j["kStamUseSlopeMaxPerSec"] = staminaUseSlopeMaxPerSec.load();
+    j["kStamUseSlopeScaleByMove"] = staminaUseSlopeScaleByMove.load();
+    j["kStamUseSlopeMinFloorPct"] = staminaUseSlopeMinFloorPct.load();
+
     std::ofstream out(file);
     if (!out.is_open()) return false;
     out << j.dump(4);
@@ -185,6 +198,9 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     } catch (...) {
         return false;
     }
+
+    auto clamp01 = [](float v) { return std::max(0.0f, std::min(100.0f, v)); };
+    auto clampPos = [](float v, float hi) { return std::max(0.0f, std::min(hi, v)); };
 
     if (j.contains("kReduceOutOfCombat")) {
         float v = j["kReduceOutOfCombat"].get<float>();
@@ -469,8 +485,7 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kWeatherIgnoreInterior")) {
         weatherIgnoreInterior = j["kWeatherIgnoreInterior"].get<bool>();
     }
-
-    auto clamp01 = [](float v) { return std::max(0.0f, std::min(100.0f, v)); };
+    
     if (j.contains("kHealthEnabled")) healthEnabled = j["kHealthEnabled"].get<bool>();
     if (j.contains("kHealthThresholdPct")) healthThresholdPct = clamp01(j["kHealthThresholdPct"].get<float>());
     if (j.contains("kHealthReducePct")) healthReducePct = clamp01(j["kHealthReducePct"].get<float>());
@@ -531,5 +546,25 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
             scaleCompMode = (v == 1) ? ScaleCompMode::Inverse : ScaleCompMode::Additive;
         }
     }
+
+    if (j.contains("kStamUseJogEnabled")) staminaUseJogEnabled = j["kStamUseJogEnabled"].get<bool>();
+    if (j.contains("kStamUseJogPerSec")) staminaUseJogPerSec = clampPos(j["kStamUseJogPerSec"].get<float>(), 1000.0f);
+    if (j.contains("kStamUseJogOnlyWhileMoving"))
+        staminaUseJogOnlyWhileMoving = j["kStamUseJogOnlyWhileMoving"].get<bool>();
+    if (j.contains("kStamUseJogAutoDisable")) staminaUseJogAutoDisable = j["kStamUseJogAutoDisable"].get<bool>();
+    if (j.contains("kStamUseJogMinFloorPct"))
+        staminaUseJogMinFloorPct = clamp01(j["kStamUseJogMinFloorPct"].get<float>());
+
+    if (j.contains("kStamUseSlopeEnabled")) staminaUseSlopeEnabled = j["kStamUseSlopeEnabled"].get<bool>();
+    if (j.contains("kStamUseSlopeStartDeg"))
+        staminaUseSlopeStartDeg = std::clamp(j["kStamUseSlopeStartDeg"].get<float>(), 0.0f, 60.0f);
+    if (j.contains("kStamUseSlopePerDegPerSec"))
+        staminaUseSlopePerDegPerSec = clampPos(j["kStamUseSlopePerDegPerSec"].get<float>(), 100.0f);
+    if (j.contains("kStamUseSlopeMaxPerSec"))
+        staminaUseSlopeMaxPerSec = clampPos(j["kStamUseSlopeMaxPerSec"].get<float>(), 1000.0f);
+    if (j.contains("kStamUseSlopeScaleByMove")) staminaUseSlopeScaleByMove = j["kStamUseSlopeScaleByMove"].get<bool>();
+    if (j.contains("kStamUseSlopeMinFloorPct"))
+        staminaUseSlopeMinFloorPct = clamp01(j["kStamUseSlopeMinFloorPct"].get<float>());
+
     return true;
 }
