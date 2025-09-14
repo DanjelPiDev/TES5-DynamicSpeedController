@@ -454,62 +454,225 @@ void __stdcall UI::SpeedConfig::Render() {
                                             "Activate", "Ready Weapon", "SwitchPOV"};
         constexpr int kEventsCount = sizeof(kUserEvents) / sizeof(kUserEvents[0]);
         constexpr int kCustomIdx = kEventsCount;
+        constexpr int kAddCustomIdx = -2;
 
         std::string sprintEvt = Settings::sprintEventName;
         int sprintIdx = findIndex(sprintEvt, kUserEvents, kEventsCount);
         if (sprintIdx < 0) sprintIdx = kCustomIdx;
+        int sprintIdxBuiltin = findIndex(sprintEvt, kUserEvents, kEventsCount);
+        int sprintIdxCustom = -1;
+        for (int i = 0; i < (int)Settings::sprintEventCustomList.size(); ++i) {
+            if (sprintEvt == Settings::sprintEventCustomList[i]) {
+                sprintIdxCustom = i;
+                break;
+            }
+        }
+        const char* sprintLabel =
+            (sprintIdxBuiltin >= 0)
+                ? kUserEvents[sprintIdxBuiltin] : (sprintIdxCustom >= 0)
+                ? Settings::sprintEventCustomList[sprintIdxCustom].c_str() : sprintEvt.c_str();
 
-        if (ImGui::BeginCombo("Sprint Event", sprintIdx == kCustomIdx ? sprintEvt.c_str() : kUserEvents[sprintIdx])) {
+        static bool s_sprintAddOpen = false;
+        static char s_sprintNewBuf[64] = {};
+
+        if (ImGui::BeginCombo("Sprint Event", sprintLabel)) {
             for (int i = 0; i < kEventsCount; ++i) {
-                bool sel = (sprintIdx == i);
+                bool sel = (sprintIdxBuiltin == i);
                 if (ImGui::Selectable(kUserEvents[i], sel)) {
                     Settings::sprintEventName = kUserEvents[i];
                     SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                    s_sprintAddOpen = false;
                 }
             }
-            bool selCustom = (sprintIdx == kCustomIdx);
-            if (ImGui::Selectable("Custom...", selCustom)) {
+
+            if (!Settings::sprintEventCustomList.empty()) {
+                ImGui::Separator();
+                ImGui::TextDisabled("Custom");
+                for (int i = 0; i < (int)Settings::sprintEventCustomList.size(); ++i) {
+                    const std::string& name = Settings::sprintEventCustomList[i];
+                    bool sel = (sprintIdxCustom == i);
+                    if (ImGui::Selectable(name.c_str(), sel)) {
+                        Settings::sprintEventName = name;
+                        SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                        s_sprintAddOpen = false;
+                    }
+                }
             }
+            ImGui::Separator();
+            if (ImGui::Selectable("Custom...", false)) {
+                s_sprintAddOpen = true;
+                s_sprintNewBuf[0] = '\0';
+            }
+
             ImGui::EndCombo();
         }
 
-        static char sprintCustomBuf[64] = {};
-        if (sprintIdx == kCustomIdx) {
-            if (sprintCustomBuf[0] == '\0' && !sprintEvt.empty()) {
-                std::snprintf(sprintCustomBuf, sizeof(sprintCustomBuf), "%s", sprintEvt.c_str());
+        if (s_sprintAddOpen) {
+            ImGui::PushID("sprintAddRow");
+            ImGui::SetNextItemWidth(250.0f);
+            ImGui::InputText("New Sprint Event", s_sprintNewBuf, sizeof(s_sprintNewBuf));
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Add")) {
+                std::string v = s_sprintNewBuf;
+                while (!v.empty() && (v.back() == ' ' || v.back() == '\t')) v.pop_back();
+                size_t p0 = 0;
+                while (p0 < v.size() && (v[p0] == ' ' || v[p0] == '\t')) ++p0;
+                if (p0 > 0) v.erase(0, p0);
+
+                auto notInBuiltin = [&] { return findIndex(v, kUserEvents, kEventsCount) < 0; };
+                auto notInCustom = [&] {
+                    return std::find(Settings::sprintEventCustomList.begin(), Settings::sprintEventCustomList.end(),
+                                     v) == Settings::sprintEventCustomList.end();
+                };
+                if (!v.empty() && notInBuiltin() && notInCustom()) {
+                    Settings::sprintEventCustomList.push_back(v);
+                    Settings::sprintEventName = v;
+                    SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                    s_sprintNewBuf[0] = '\0';
+                }
             }
-            if (ImGui::InputText("Custom Sprint Event", sprintCustomBuf, sizeof(sprintCustomBuf))) {
-                Settings::sprintEventName = sprintCustomBuf;
-                SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Cancel")) {
+                s_sprintAddOpen = false;
+            }
+            ImGui::PopID();
+        }
+
+        if (!Settings::sprintEventCustomList.empty()) {
+            ImGui::Separator();
+            ImGui::TextDisabled("Manage Custom Sprint Events");
+            if (ImGui::BeginTable("tblSprintCustom", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
+                ImGui::TableSetupColumn("Event");
+                ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+                ImGui::TableHeadersRow();
+                for (int i = 0; i < (int)Settings::sprintEventCustomList.size(); ++i) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(Settings::sprintEventCustomList[i].c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    std::string btn = "X##sprRem" + std::to_string(i);
+                    if (ImGui::SmallButton(btn.c_str())) {
+                        const bool removingSelected = (Settings::sprintEventName == Settings::sprintEventCustomList[i]);
+                        Settings::sprintEventCustomList.erase(Settings::sprintEventCustomList.begin() + i);
+                        if (removingSelected) {
+                            Settings::sprintEventName = "Sprint";
+                            SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                        }
+                        --i;
+                    }
+                }
+                ImGui::EndTable();
             }
         }
 
         std::string toggleEvt = Settings::toggleSpeedEvent;
-        int toggleIdx = findIndex(toggleEvt, kUserEvents, kEventsCount);
-        if (toggleIdx < 0) toggleIdx = kCustomIdx;
+        int toggleIdxBuiltin = findIndex(toggleEvt, kUserEvents, kEventsCount);
+        int toggleIdxCustom = -1;
+        for (int i = 0; i < (int)Settings::toggleEventCustomList.size(); ++i) {
+            if (toggleEvt == Settings::toggleEventCustomList[i]) {
+                toggleIdxCustom = i;
+                break;
+            }
+        }
+         
+        const char* toggleLabel = (toggleIdxBuiltin >= 0)  ? kUserEvents[toggleIdxBuiltin]
+                                  : (toggleIdxCustom >= 0) ? Settings::toggleEventCustomList[toggleIdxCustom].c_str()
+                                                           : toggleEvt.c_str();
 
-        if (ImGui::BeginCombo("Toggle Event", toggleIdx == kCustomIdx ? toggleEvt.c_str() : kUserEvents[toggleIdx])) {
+        static bool s_toggleAddOpen = false;
+        static char s_toggleNewBuf[64] = {};
+
+        if (ImGui::BeginCombo("Toggle Event", toggleLabel)) {
             for (int i = 0; i < kEventsCount; ++i) {
-                bool sel = (toggleIdx == i);
+                bool sel = (toggleIdxBuiltin == i);
                 if (ImGui::Selectable(kUserEvents[i], sel)) {
                     Settings::toggleSpeedEvent = kUserEvents[i];
                     SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                    s_toggleAddOpen = false;
                 }
             }
-            bool selCustom = (toggleIdx == kCustomIdx);
-            if (ImGui::Selectable("Custom...", selCustom)) {
+
+            if (!Settings::toggleEventCustomList.empty()) {
+                ImGui::Separator();
+                ImGui::TextDisabled("Custom");
+                for (int i = 0; i < (int)Settings::toggleEventCustomList.size(); ++i) {
+                    const std::string& name = Settings::toggleEventCustomList[i];
+                    bool sel = (toggleIdxCustom == i);
+                    if (ImGui::Selectable(name.c_str(), sel)) {
+                        Settings::toggleSpeedEvent = name;
+                        SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                        s_toggleAddOpen = false;
+                    }
+                }
             }
+
+            ImGui::Separator();
+            if (ImGui::Selectable("Custom...", false)) {
+                s_toggleAddOpen = true;
+                s_toggleNewBuf[0] = '\0';
+            }
+
             ImGui::EndCombo();
         }
 
-        static char toggleCustomBuf[64] = {};
-        if (toggleIdx == kCustomIdx) {
-            if (toggleCustomBuf[0] == '\0' && !toggleEvt.empty()) {
-                std::snprintf(toggleCustomBuf, sizeof(toggleCustomBuf), "%s", toggleEvt.c_str());
+        if (s_toggleAddOpen) {
+            ImGui::PushID("toggleAddRow");
+            ImGui::SetNextItemWidth(250.0f);
+            ImGui::InputText("New Toggle Event", s_toggleNewBuf, sizeof(s_toggleNewBuf));
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Add")) {
+                std::string v = s_toggleNewBuf;
+                while (!v.empty() && (v.back() == ' ' || v.back() == '\t')) v.pop_back();
+                size_t p0 = 0;
+                while (p0 < v.size() && (v[p0] == ' ' || v[p0] == '\t')) ++p0;
+                if (p0 > 0) v.erase(0, p0);
+
+                auto notInBuiltin = [&] { return findIndex(v, kUserEvents, kEventsCount) < 0; };
+                auto notInCustom = [&] {
+                    return std::find(Settings::toggleEventCustomList.begin(), Settings::toggleEventCustomList.end(),
+                                     v) == Settings::toggleEventCustomList.end();
+                };
+
+                if (!v.empty() && notInBuiltin() && notInCustom()) {
+                    Settings::toggleEventCustomList.push_back(v);
+                    Settings::toggleSpeedEvent = v;
+                    SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                    s_toggleNewBuf[0] = '\0';
+                }
             }
-            if (ImGui::InputText("Custom Toggle Event", toggleCustomBuf, sizeof(toggleCustomBuf))) {
-                Settings::toggleSpeedEvent = toggleCustomBuf;
-                SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Cancel")) {
+                s_toggleAddOpen = false;
+            }
+            ImGui::PopID();
+        }
+
+        if (!Settings::toggleEventCustomList.empty()) {
+            ImGui::Separator();
+            ImGui::TextDisabled("Manage Custom Toggle Events");
+            if (ImGui::BeginTable("tblToggleCustom", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
+                ImGui::TableSetupColumn("Event");
+                ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+                ImGui::TableHeadersRow();
+
+                for (int i = 0; i < (int)Settings::toggleEventCustomList.size(); ++i) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(Settings::toggleEventCustomList[i].c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    std::string btn = "X##tglRem" + std::to_string(i);
+                    if (ImGui::SmallButton(btn.c_str())) {
+                        const bool removingSelected =
+                            (Settings::toggleSpeedEvent == Settings::toggleEventCustomList[i]);
+                        Settings::toggleEventCustomList.erase(Settings::toggleEventCustomList.begin() + i);
+                        if (removingSelected) {
+                            Settings::toggleSpeedEvent = "Shout";
+                            SpeedController::GetSingleton()->UpdateBindingsFromSettings();
+                        }
+                        --i;
+                    }
+                }
+                ImGui::EndTable();
             }
         }
 
@@ -1121,6 +1284,35 @@ void __stdcall UI::SpeedConfig::RenderAddons() {
             Settings::dwDryPerSec.store(dr);
         }
         ImGui::TextDisabled("0 = instant; larger = faster drying.");
+
+        // --- Jogging Sweat ---
+        ImGui::Separator();
+        bool jogOn = Settings::dwJogFeatureEnabled.load();
+        if (ImGui::Checkbox("Enable DW Jogging-Feature", &jogOn)) {
+            Settings::dwJogFeatureEnabled.store(jogOn);
+            if (auto* pc = RE::PlayerCharacter::GetSingleton()) SpeedController::GetSingleton()->RefreshNow();
+        }
+        ImGui::BeginDisabled(!Settings::dwJogFeatureEnabled.load());
+        {
+            float maxI = Settings::dwJogMaxIntensity.load();
+            if (ImGui::SliderFloat("Max intensity while jogging", &maxI, 0.0f, 1.0f, "%.2f")) {
+                Settings::dwJogMaxIntensity.store(maxI);
+            }
+            float buj = Settings::dwJogBuildUpPerSec.load();
+            if (ImGui::SliderFloat("Wetness build-up (Jog) (Delta/s)", &buj, 0.0f, 10.0f, "%.2f")) {
+                Settings::dwJogBuildUpPerSec.store(buj);
+            }
+            float drj = Settings::dwJogDryPerSec.load();
+            if (ImGui::SliderFloat("Dry rate (Jog) (Delta/s)", &drj, 0.0f, 10.0f, "%.2f")) {
+                Settings::dwJogDryPerSec.store(drj);
+            }
+            bool onlyMove = Settings::dwJogOnlyWhileMoving.load();
+            if (ImGui::Checkbox("Only while moving (not in-place)", &onlyMove)) {
+                Settings::dwJogOnlyWhileMoving.store(onlyMove);
+            }
+        }
+        ImGui::EndDisabled();
+
 
         ImGui::EndDisabled();
 

@@ -37,6 +37,16 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
     j["kToggleSpeedKey"] = toggleSpeedKey.load();
     j["kToggleSpeedEvent"] = toggleSpeedEvent;
     j["kSprintEventName"] = sprintEventName;
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto& s : sprintEventCustomList) arr.push_back(s);
+        j["kSprintEventCustomList"] = std::move(arr);
+    }
+    {
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto& s : toggleEventCustomList) arr.push_back(s);
+        j["kToggleEventCustomList"] = std::move(arr);
+    }
 
     j["kAttackSpeedEnabled"] = attackSpeedEnabled.load();
     j["kAttackOnlyWhenDrawn"] = attackOnlyWhenDrawn.load();
@@ -166,6 +176,13 @@ bool Settings::SaveToJson(const std::filesystem::path& file) {
 
     j["kDwBuildUpPerSec"] = dwBuildUpPerSec.load();
     j["kDwDryPerSec"] = dwDryPerSec.load();
+    
+    j["kDwJogFeatureEnabled"] = dwJogFeatureEnabled.load();
+    j["kDwJogBuildUpPerSec"] = dwJogBuildUpPerSec.load();
+    j["kDwJogDryPerSec"] = dwJogDryPerSec.load();
+    j["kDwJogMaxIntensity"] = dwJogMaxIntensity.load();
+    j["kDwJogOnlyWhileMoving"] = dwJogOnlyWhileMoving.load();
+
 
     j["kStamUseJogEnabled"] = staminaUseJogEnabled.load();
     j["kStamUseJogPerSec"] = staminaUseJogPerSec.load();
@@ -237,6 +254,24 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kSprintEventName")) {
         std::string v = j["kSprintEventName"].get<std::string>();
         sprintEventName = v;
+    }
+    if (j.contains("kSprintEventCustomList") && j["kSprintEventCustomList"].is_array()) {
+        sprintEventCustomList.clear();
+        for (auto& e : j["kSprintEventCustomList"]) {
+            if (e.is_string()) {
+                auto s = e.get<std::string>();
+                if (!s.empty()) sprintEventCustomList.push_back(std::move(s));
+            }
+        }
+    }
+    if (j.contains("kToggleEventCustomList") && j["kToggleEventCustomList"].is_array()) {
+        toggleEventCustomList.clear();
+        for (auto& e : j["kToggleEventCustomList"]) {
+            if (e.is_string()) {
+                auto s = e.get<std::string>();
+                if (!s.empty()) toggleEventCustomList.push_back(std::move(s));
+            }
+        }
     }
 
     if (j.contains("kAttackSpeedEnabled")) {
@@ -565,6 +600,24 @@ bool Settings::LoadFromJson(const std::filesystem::path& file) {
     if (j.contains("kStamUseSlopeScaleByMove")) staminaUseSlopeScaleByMove = j["kStamUseSlopeScaleByMove"].get<bool>();
     if (j.contains("kStamUseSlopeMinFloorPct"))
         staminaUseSlopeMinFloorPct = clamp01(j["kStamUseSlopeMinFloorPct"].get<float>());
+    if (j.contains("kDwJogFeatureEnabled")) {
+        dwJogFeatureEnabled = j["kDwJogFeatureEnabled"].get<bool>();
+    }
+    if (j.contains("kDwJogBuildUpPerSec")) {
+        float v = j["kDwJogBuildUpPerSec"].get<float>();
+        dwJogBuildUpPerSec = std::clamp(v, 0.0f, 20.0f);
+    }
+    if (j.contains("kDwJogDryPerSec")) {
+        float v = j["kDwJogDryPerSec"].get<float>();
+        dwJogDryPerSec = std::clamp(v, 0.0f, 20.0f);
+    }
+    if (j.contains("kDwJogMaxIntensity")) {
+        float v = j["kDwJogMaxIntensity"].get<float>();
+        dwJogMaxIntensity = std::clamp(v, 0.0f, 1.0f);
+    }
+    if (j.contains("kDwJogOnlyWhileMoving")) {
+        dwJogOnlyWhileMoving = j["kDwJogOnlyWhileMoving"].get<bool>();
+    }
 
     return true;
 }

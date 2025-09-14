@@ -59,6 +59,8 @@ struct Settings {
     static inline std::atomic<int> toggleSpeedKey{269};
     static inline std::string toggleSpeedEvent{"Shout"};
     static inline std::string sprintEventName{"Sprint"};
+    static inline std::vector<std::string> sprintEventCustomList{};
+    static inline std::vector<std::string> toggleEventCustomList{};
 
     // Attack speed scaling
     static inline std::atomic<bool> attackSpeedEnabled{true};
@@ -123,6 +125,13 @@ struct Settings {
 
     static inline std::atomic<float> dwBuildUpPerSec{0.35f};
     static inline std::atomic<float> dwDryPerSec{0.15f};
+
+    // DW (Dynamic Wetness) — Jogging feature
+    static inline std::atomic<bool> dwJogFeatureEnabled{false};
+    static inline std::atomic<float> dwJogBuildUpPerSec{0.40f};
+    static inline std::atomic<float> dwJogDryPerSec{0.20f};
+    static inline std::atomic<float> dwJogMaxIntensity{0.60f};  // 0..1
+    static inline std::atomic<bool> dwJogOnlyWhileMoving{true};
 
     // Stamina usage (drain)
     static inline std::atomic<bool> staminaUseJogEnabled{false};

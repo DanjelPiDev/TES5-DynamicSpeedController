@@ -420,45 +420,104 @@ bool SpeedController::UpdateSlopePenalty(RE::Actor* a, float dt) {
             }
         }
 
-        if (a == RE::PlayerCharacter::GetSingleton() 
-            && Settings::dwEnabled.load() 
-            && Settings::dwSlopeFeatureEnabled.load()) {
-            static float s_dwIntensity = 0.0f;
+        if (a == RE::PlayerCharacter::GetSingleton() && Settings::dwEnabled.load() &&
+            (Settings::dwSlopeFeatureEnabled.load() || Settings::dwJogFeatureEnabled.load())) {
+            static float s_dwSlopeIntensity = 0.0f;
+            static float s_dwJogIntensity = 0.0f;
 
-            const float startDeg = std::max(0.0f, Settings::dwStartDeg.load());
-            const float fullDeg = std::max(startDeg + 0.1f, Settings::dwFullDeg.load());
-            const float span = std::max(0.1f, fullDeg - startDeg);
+            const float moveMag = std::clamp(std::sqrt(moveX_ * moveX_ + moveY_ * moveY_), 0.0f, 1.0f);
 
-            float target = 0.0f;
+            // Slope (optional)
+            float slopeTarget = 0.0f;
+            if (Settings::dwSlopeFeatureEnabled.load()) {
+                const float startDeg = std::max(0.0f, Settings::dwStartDeg.load());
+                const float fullDeg = std::max(startDeg + 0.1f, Settings::dwFullDeg.load());
+                const float span = std::max(0.1f, fullDeg - startDeg);
 
-            if (!still && haveSlope && slopeDeg > startDeg) {
-                const float moveMag = std::clamp(std::sqrt(moveX_ * moveX_ + moveY_ * moveY_), 0.0f, 1.0f);
-                const float slopePart = std::clamp((slopeDeg - startDeg) / span, 0.0f, 1.0f);
-                target = std::clamp(slopePart * (0.50f + 0.50f * moveMag), 0.0f, 1.0f);
+                if (!still && haveSlope && slopeDeg > startDeg) {
+                    float norm = std::clamp((slopeDeg - startDeg) / span, 0.0f, 1.0f);
+
+                    const float deadzone = 0.20f;
+                    norm = std::clamp((norm - deadzone) / std::max(1e-3f, 1.0f - deadzone), 0.0f, 1.0f);
+
+                    const float gamma = 1.6f;
+                    const float curved = std::pow(norm, gamma);
+
+                    const float moveFactor = std::lerp(0.25f, 0.90f, moveMag);
+
+                    const float slopeMax = 0.35f;
+                    slopeTarget = std::clamp(curved * moveFactor * slopeMax, 0.0f, 1.0f);
+                }
+
+                const bool useTau = true;
+                if (useTau) {
+                    const float tauUp = 3.0f;
+                    const float tauDown = 4.5f;
+                    const float tau = (slopeTarget >= s_dwSlopeIntensity) ? tauUp : tauDown;
+                    s_dwSlopeIntensity = ExpoLerp(s_dwSlopeIntensity, slopeTarget, dt, tau);
+                } else {
+                    const float rateUp = std::max(0.0f, Settings::dwBuildUpPerSec.load());
+                    const float rateDown = std::max(0.0f, Settings::dwDryPerSec.load());
+                    const float rate = (slopeTarget >= s_dwSlopeIntensity) ? rateUp : rateDown;
+                    s_dwSlopeIntensity = RateTowards(s_dwSlopeIntensity, slopeTarget, dt, rate);
+                }
+            } else {
+                const float rateDown = std::max(0.0f, Settings::dwDryPerSec.load());
+                s_dwSlopeIntensity = RateTowards(s_dwSlopeIntensity, 0.0f, dt, rateDown);
             }
 
-            const float rateUp = std::max(0.0f, Settings::dwBuildUpPerSec.load());
-            const float rateDown = std::max(0.0f, Settings::dwDryPerSec.load());
-            const float rate = (target >= s_dwIntensity) ? rateUp : rateDown;
+            // Jogging (optional)
+            float jogTarget = 0.0f;
+            static float s_jogEffort = 0.0f;
+            static float s_jogGateT = 0.0f;
 
-            s_dwIntensity = RateTowards(s_dwIntensity, target, dt, rate);
+            if (Settings::dwJogFeatureEnabled.load() && joggingMode_) {
+                const float dz = 0.35f;
+                float norm = std::clamp((moveMag - dz) / std::max(1e-3f, 1.0f - dz), 0.0f, 1.0f);
+
+                const float preDelay = 0.35f;
+                if (norm > 0.0f)
+                    s_jogGateT += dt;
+                else
+                    s_jogGateT = 0.0f;
+
+                const float gamma = 1.8f;  // 1.4..2.2
+                float curved = (s_jogGateT >= preDelay) ? std::pow(norm, gamma) : 0.0f;
+
+                const float tauUp = 2.5f;
+                const float tauDown = 4.0f;
+                const float tau = (curved >= s_jogEffort) ? tauUp : tauDown;
+                s_jogEffort = ExpoLerp(s_jogEffort, curved, dt, tau);  // 0..1
+
+                const float jogMax = std::clamp(Settings::dwJogMaxIntensity.load(), 0.0f, 1.0f);
+                jogTarget = s_jogEffort * jogMax;
+            } else {
+                const float tauDown = 4.0f;
+                s_jogEffort = ExpoLerp(s_jogEffort, 0.0f, dt, tauDown);
+                s_jogGateT = 0.0f;
+            }
+
+            {
+                const float tauUp = 2.0f;
+                const float tauDown = 3.0f;
+                const float tau = (jogTarget >= s_dwJogIntensity) ? tauUp : tauDown;
+                s_dwJogIntensity = ExpoLerp(s_dwJogIntensity, jogTarget, dt, tau);
+            }
 
             const bool wetEnv = SWE_Link::IsWorldWet(a);
-
             constexpr float kHoldSec = 1.75f;
-            constexpr float kEps = 1e-3f;
+
+            const float outScale = 0.75f;
+            const float combined = std::max(s_dwSlopeIntensity, s_dwJogIntensity);
+            const float sendVal = (combined > 1e-3f) ? std::clamp(combined * outScale, 0.0f, 1.0f) : 0.0f;
 
             static float s_lastSent = -1.0f;
             static uint64_t s_lastMs = 0;
-
             const uint64_t nowMs = NowMs();
-            const float sendVal = (s_dwIntensity > kEps) ? s_dwIntensity : 0.0f;
-
             const uint64_t resendMs = static_cast<uint64_t>(kHoldSec * 1000.0f * 0.6f);
-            bool needSend = std::fabs(sendVal - s_lastSent) > 0.01f || (nowMs - s_lastMs) > resendMs;
 
+            const bool needSend = std::fabs(sendVal - s_lastSent) > 0.01f || (nowMs - s_lastMs) > resendMs;
             if (needSend) {
-                const bool wetEnv = SWE_Link::IsWorldWet(a);
                 SWE_Link::SetSweat(a, sendVal, kHoldSec, wetEnv);
                 s_lastSent = sendVal;
                 s_lastMs = nowMs;
